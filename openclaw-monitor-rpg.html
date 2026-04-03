@@ -1,0 +1,2688 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>OpenClaw RPG - Agent 监控</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #0f0f23;
+  color: #e2e8f0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px;
+  overflow: auto;
+}
+
+header {
+  width: 100%;
+  max-width: 1100px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 10px 18px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.1);
+  flex-shrink: 0;
+}
+
+h1 {
+  font-size: 1.3rem;
+  background: linear-gradient(90deg, #60a5fa, #a78bfa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.btn {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 600;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.btn-primary { background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; }
+.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(59,130,246,0.4); }
+.btn-secondary { background: rgba(255,255,255,0.1); color: #e2e8f0; border: 1px solid rgba(255,255,255,0.15); }
+.btn-secondary:hover { background: rgba(255,255,255,0.15); }
+.btn-live { background: rgba(39,174,96,0.2); color: #27AE60; border: 1px solid rgba(39,174,96,0.3); }
+.btn-live.active { background: rgba(39,174,96,0.35); }
+
+.main-layout {
+  display: flex;
+  gap: 14px;
+  width: 100%;
+  max-width: 1100px;
+  flex: 1;
+  min-height: 0;
+}
+
+#game-container {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 0 40px rgba(0,0,0,0.5);
+  border: 2px solid rgba(255,255,255,0.1);
+  flex: 1;
+  min-width: 0;
+  cursor: crosshair;
+  aspect-ratio: 960 / 704;
+  max-height: calc(100vh - 180px);
+}
+
+#gameCanvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* 连接状态指示器 */
+#conn-indicator {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(0,0,0,0.6);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-family: 'Monaco', monospace;
+}
+#conn-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #475569;
+  transition: background 0.3s;
+}
+#conn-dot.mock    { background: #F39C12; }
+#conn-dot.live    { background: #27AE60; }
+#conn-dot.error   { background: #E74C3C; }
+#conn-dot.connecting { background: #3498DB; animation: pulse 1s infinite; }
+
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+#minimap-canvas { display: none; }
+
+#side-panel {
+  width: 240px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-height: calc(100vh - 180px);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* Tab 导航 */
+#side-tabs {
+  display: flex;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  flex-shrink: 0;
+}
+.side-tab {
+  flex: 1;
+  padding: 8px 4px;
+  font-size: 0.72rem;
+  color: #64748b;
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+  text-align: center;
+}
+.side-tab:hover { color: #e2e8f0; background: rgba(255,255,255,0.05); }
+.side-tab.active { color: #a78bfa; border-bottom: 2px solid #a78bfa; font-weight: 600; }
+
+/* Tab 内容区 */
+.tab-pane {
+  display: none;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  padding: 12px;
+}
+.tab-pane.active { display: flex; }
+
+/* 聊天 Tab */
+#chat-log {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding-right: 2px;
+}
+#chat-log::-webkit-scrollbar { width: 4px; }
+#chat-log::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+#chat-input-area { flex-shrink: 0; }
+
+/* 会话 Tab */
+#session-list-items { overflow-y: auto; flex: 1; }
+
+/* 状态 Tab */
+#detail-content { font-size: 0.78rem; overflow-y: auto; flex: 1; }
+
+#detail-card { display: none; }  /* 旧结构隐藏 */
+#agent-list   { display: none; }  /* 旧结构隐藏 */
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  color: #94a3b8;
+}
+.detail-row span:last-child { color: #e2e8f0; font-weight: 500; }
+.detail-empty { color: #475569; font-size: 0.8rem; text-align: center; padding: 20px 0; }
+
+#status-bar {
+  width: 100%;
+  max-width: 1100px;
+  margin-top: 10px;
+  padding: 8px 18px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.1);
+  font-size: 0.78rem;
+  color: #94a3b8;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+#status-bar span { font-family: 'Monaco', 'Consolas', monospace; color: #60a5fa; }
+
+.help-text {
+  margin-top: 8px;
+  font-size: 0.74rem;
+  color: #475569;
+  text-align: center;
+  flex-shrink: 0;
+}
+.help-text kbd {
+  display: inline-block;
+  padding: 1px 4px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 3px;
+  font-family: 'Monaco', monospace;
+  font-size: 0.72rem;
+  margin: 0 1px;
+}
+
+/* Agent 管理模态框 */
+#agent-modal-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+#agent-modal-overlay.open { display: flex; }
+#agent-modal {
+  background: #1e2a3a;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 14px;
+  padding: 24px;
+  width: 360px;
+  max-width: 92vw;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+}
+#agent-modal h3 { font-size: 1rem; margin-bottom: 16px; color: #e2e8f0; }
+.modal-field { margin-bottom: 14px; }
+.modal-field label { display: block; font-size: 0.74rem; color: #94a3b8; margin-bottom: 4px; }
+.modal-field input {
+  width: 100%;
+  background: rgba(0,0,0,0.3);
+  color: #e2e8f0;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 0.82rem;
+  font-family: inherit;
+}
+.modal-field input:focus { outline: none; border-color: #3b82f6; }
+.modal-actions { display: flex; gap: 8px; margin-top: 18px; }
+.modal-actions button { flex: 1; padding: 8px; border: none; border-radius: 8px; cursor: pointer; font-size: 0.82rem; font-weight: 600; }
+.modal-btn-primary { background: linear-gradient(135deg,#3b82f6,#8b5cf6); color: #fff; }
+.modal-btn-cancel { background: rgba(255,255,255,0.1); color: #94a3b8; }
+#modal-err { font-size: 0.72rem; color: #f87171; margin-top: 6px; min-height: 1.2em; }
+
+/* Agent 管理列表条目 */
+.agent-manage-item {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  margin-bottom: 4px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.agent-manage-item .ama-name { flex: 1; font-size: 0.78rem; color: #e2e8f0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-manage-item .ama-id   { font-size: 0.65rem; color: #475569; }
+.agent-manage-item .ama-btn  { padding: 2px 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.68rem; }
+
+@media (max-width: 700px) {
+  #side-panel { display: none; }
+  .main-layout { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🎮 OpenClaw RPG <span style="font-size:0.7rem;color:#64748b;-webkit-text-fill-color:#64748b;">Monitor</span></h1>
+  <div class="controls">
+    <span style="font-size:0.78rem;color:#64748b;" id="agent-count">— Agents</span>
+    <select id="zoom-select" onchange="game.setZoomLevel(this.value)"
+      style="background:rgba(255,255,255,0.1);color:#e2e8f0;border:1px solid rgba(255,255,255,0.15);border-radius:6px;padding:5px 8px;font-size:0.78rem;cursor:pointer;">
+      <option value="0.25">25%</option>
+      <option value="0.5">50%</option>
+      <option value="0.75">75%</option>
+      <option value="1" selected>100% (全景)</option>
+      <option value="1.5">150%</option>
+      <option value="2">200%</option>
+    </select>
+    <button class="btn btn-live" id="btn-live" onclick="game.toggleDataSource()">🔌 连接 OpenClaw</button>
+    <button class="btn btn-secondary" onclick="game.togglePause()">⏸ 暂停</button>
+    <button class="btn btn-primary" onclick="game.reset()">🔄 重置</button>
+  </div>
+</header>
+
+<div class="main-layout">
+  <div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+    <div id="conn-indicator">
+      <div id="conn-dot" class="mock"></div>
+      <span id="conn-label">本地模式</span>
+    </div>
+    <canvas id="minimap-canvas" width="120" height="90"></canvas>
+  </div>
+
+  <div id="side-panel">
+    <!-- Tab 导航 -->
+    <div id="side-tabs">
+      <button class="side-tab active" onclick="Scene.switchTab('chat')">💬 聊天</button>
+      <button class="side-tab" onclick="Scene.switchTab('sessions')">📋 会话</button>
+      <button class="side-tab" onclick="Scene.switchTab('agents')">🤖 Agents</button>
+    </div>
+
+    <!-- 聊天 Tab -->
+    <div id="tab-chat" class="tab-pane active">
+      <div style="font-size:0.72rem;color:#64748b;margin-bottom:6px;flex-shrink:0;">与 <span id="chat-session-label" style="color:#a78bfa;">金毛 🐕</span> 对话</div>
+      <div id="chat-log"></div>
+      <div id="chat-input-area">
+        <textarea id="chat-input" rows="2"
+          style="width:100%;background:rgba(0,0,0,0.3);color:#e2e8f0;border:1px solid rgba(255,255,255,0.15);border-radius:6px;padding:6px;font-size:0.8rem;resize:none;font-family:inherit;"
+          placeholder="输入消息… (Enter 发送, Shift+Enter 换行)"></textarea>
+        <div style="display:flex;gap:6px;margin-top:6px;">
+          <button id="chat-send-btn" onclick="Scene.handleChatSend()"
+            style="flex:1;padding:5px;background:#3b82f6;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.8rem;">发送</button>
+          <button onclick="Scene.clearChat()"
+            style="padding:5px 10px;background:rgba(255,255,255,0.1);color:#94a3b8;border:none;border-radius:6px;cursor:pointer;font-size:0.8rem;">清空</button>
+        </div>
+        <div id="chat-status" style="font-size:0.72rem;color:#64748b;margin-top:4px;"></div>
+      </div>
+    </div>
+
+    <!-- 会话 Tab -->
+    <div id="tab-sessions" class="tab-pane">
+      <div id="session-list-items"><p class="detail-empty" style="font-size:0.75rem;padding:8px">—</p></div>
+    </div>
+
+    <!-- Agent 管理 Tab (原 status tab，id 改为 tab-agents) -->
+    <div id="tab-agents" class="tab-pane">
+      <!-- 当前选中 agent 详情（点击小人后展示） -->
+      <div id="detail-content" style="flex-shrink:0;margin-bottom:8px;"><p class="detail-empty" style="padding:6px 0;">点击小人查看详情</p></div>
+      <div style="border-top:1px solid rgba(255,255,255,0.08);padding-top:8px;flex-shrink:0;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <span style="font-size:0.72rem;color:#94a3b8;">Agent 列表</span>
+          <button onclick="AgentManager.showCreate()" style="padding:3px 10px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.72rem;">+ 新增</button>
+        </div>
+        <div id="agent-manage-list"></div>
+      </div>
+    </div>
+
+    <!-- 旧 status tab 别名（switchTab 兼容） -->
+    <div id="tab-status" style="display:none;"></div>
+
+    <!-- 兼容旧代码的隐藏容器 -->
+    <div id="detail-card" style="display:none;"></div>
+    <div id="agent-list" style="display:none;"></div>
+    <div id="agent-list-items" style="display:none;"></div>
+    <div id="chat-box" style="display:none;"></div>
+  </div>
+</div>
+
+<div id="status-bar">
+  <div>位置: <span id="position-info">—</span></div>
+  <div>FPS: <span id="fps-info">0</span></div>
+  <div>缩放: <span id="zoom-info">100%</span></div>
+  <div>模式: <span id="ghost-status">🚶 正常</span></div>
+  <div>选中: <span id="selected-info">无</span></div>
+  <div>时间: <span id="time-info">—</span></div>
+</div>
+
+<div class="help-text">
+  移动: <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / <kbd>↑↓←→</kbd> |
+  拖拽视角: <kbd>鼠标中键</kbd> 或 <kbd>右键拖拽</kbd> |
+  幽灵模式: <kbd>G</kbd>
+</div>
+
+<!-- Agent 新增/编辑模态框 -->
+<div id="agent-modal-overlay" onclick="if(event.target===this)AgentManager.closeModal()">
+  <div id="agent-modal">
+    <h3 id="modal-title">新增 Agent</h3>
+    <div class="modal-field">
+      <label>名称 *</label>
+      <input id="modal-name" placeholder="例如：哈士奇" maxlength="40">
+    </div>
+    <div class="modal-field">
+      <label>Workspace 路径 *</label>
+      <input id="modal-workspace" placeholder="/Users/me/projects/mybot">
+    </div>
+    <div class="modal-field">
+      <label>Emoji（可选）</label>
+      <input id="modal-emoji" placeholder="🐺" maxlength="4" style="width:80px;">
+    </div>
+    <div id="modal-err"></div>
+    <div class="modal-actions">
+      <button class="modal-btn-cancel" onclick="AgentManager.closeModal()">取消</button>
+      <button class="modal-btn-primary" id="modal-submit-btn" onclick="AgentManager.submit()">创建</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// =====================================================================
+// [1] CONFIG & CONSTANTS
+// 全局配置、角色配色、工位坐标
+// =====================================================================
+
+const CONFIG = {
+  canvasWidth:  960,
+  canvasHeight: 704,
+  tileSize: 32,
+  pixelScale: 3,
+  targetFPS: 60,
+  characterWidth:  12 * 3,
+  characterHeight: 16 * 3,
+  collisionPadding: 4,
+  minY: 60,
+  zoomMin: 0.25,
+  zoomMax: 2.0,
+  zoomDefault: 1.0,
+};
+
+const ROLE_COLORS = {
+  leader:   { primary: '#FFD700', secondary: '#9B59B6', accent: '#F4D03F', dot: '#FFD700' },
+  frontend: { primary: '#3498DB', secondary: '#2980B9', accent: '#85C1E9', dot: '#3498DB' },
+  backend:  { primary: '#27AE60', secondary: '#1E8449', accent: '#82E0AA', dot: '#27AE60' },
+  designer: { primary: '#E91E8C', secondary: '#C2185B', accent: '#F48FB1', dot: '#E91E8C' },
+  qa:       { primary: '#E74C3C', secondary: '#CB4335', accent: '#F1948A', dot: '#E74C3C' },
+  default:  { primary: '#94a3b8', secondary: '#64748b', accent: '#cbd5e1', dot: '#94a3b8' },
+};
+
+// 工位坐标：30×22 地图，tileX*32+16 = 格中心，tileY*32+28 = 脚底
+const WORKSTATIONS = {
+  'leader-01':  { x: 15*32+16, y: 4*32+28  },   // 金毛工位（中区）
+  'fe-01':      { x: 5*32+16,  y: 4*32+28  },   // 哈士奇工位（左上开发区）
+  'be-01':      { x: 9*32+16,  y: 4*32+28  },
+  'design-01':  { x: 5*32+16,  y: 14*32+28 },
+  'qa-01':      { x: 9*32+16,  y: 14*32+28 },
+};
+
+// Agent ID → 工位映射
+const AGENT_WORKSTATION = {
+  'main':  'leader-01',
+  'husky': 'fe-01',
+};
+
+// =====================================================================
+// [2] DATA ADAPTER
+// 抽象数据层 —— 切换 Mock / OpenClaw 只需换一个适配器
+//
+// AgentData 结构（适配器统一输出）：
+//   { id, name, role, status, task, model, uptime, tokens }
+//   role: 'leader' | 'frontend' | 'backend' | 'designer' | 'qa'
+//   status: 'idle' | 'working'
+// =====================================================================
+
+/**
+ * 基类：定义适配器接口
+ */
+class DataAdapter {
+  constructor() {
+    this._listeners = {}; // 事件监听
+  }
+
+  /** 启动数据源 */
+  start() {}
+
+  /** 停止数据源 */
+  stop() {}
+
+  /** 获取当前所有 Agent 快照 */
+  getAgents() { return []; }
+
+  /** 事件订阅：'agents-updated' | 'message' */
+  on(event, fn) {
+    if (!this._listeners[event]) this._listeners[event] = [];
+    this._listeners[event].push(fn);
+  }
+
+  _emit(event, data) {
+    (this._listeners[event] || []).forEach(fn => fn(data));
+  }
+}
+
+// ─── Mock 适配器（内置演示数据）───────────────────────────────────────
+
+class MockAdapter extends DataAdapter {
+  constructor() {
+    super();
+    this._agents = [
+      { id: 'leader-01',  name: 'Arch Lead',     role: 'leader',   status: 'working', task: '设计系统架构',    model: 'claude-opus-4-6',    uptime: '2h 34m', tokens: '128k' },
+      { id: 'fe-01',      name: 'FE Agent',       role: 'frontend', status: 'idle',    task: '等待任务',        model: 'claude-sonnet-4-6',  uptime: '1h 12m', tokens: '45k'  },
+      { id: 'be-01',      name: 'BE Agent',       role: 'backend',  status: 'working', task: '实现 API 接口',   model: 'claude-sonnet-4-6',  uptime: '3h 05m', tokens: '210k' },
+      { id: 'design-01',  name: 'Design Agent',   role: 'designer', status: 'working', task: '生成 UI 组件',    model: 'claude-haiku-4-5',   uptime: '45m',    tokens: '22k'  },
+      { id: 'qa-01',      name: 'QA Agent',       role: 'qa',       status: 'idle',    task: '等待测试任务',    model: 'claude-haiku-4-5',   uptime: '58m',    tokens: '31k'  },
+    ];
+    this._timer = null;
+  }
+
+  getAgents() { return [...this._agents]; }
+
+  start() {
+    this._emit('status', { type: 'mock' });
+    // 每 8 秒随机更新一个 agent 状态（模拟活跃感）
+    this._timer = setInterval(() => {
+      const idx = Math.floor(Math.random() * this._agents.length);
+      this._agents[idx] = {
+        ...this._agents[idx],
+        status: this._agents[idx].status === 'working' ? 'idle' : 'working',
+      };
+      this._emit('agents-updated', this.getAgents());
+    }, 8000);
+  }
+
+  stop() {
+    if (this._timer) { clearInterval(this._timer); this._timer = null; }
+  }
+}
+
+// ─── OpenClaw 适配器（接入真实 Gateway）────────────────────────────────
+//
+// 数据模型：
+//   agents.list  → 场景小人（每个 agent = 一个小人，目前只有 main/金毛）
+//   sessions.list → 金毛的各个会话（微信、主对话等），显示在侧边栏
+//   sessions.send → 向指定 session 发消息
+// ─────────────────────────────────────────────────────────────────────
+
+class OpenClawAdapter extends DataAdapter {
+  constructor(options = {}) {
+    super();
+    this._url   = options.url   || 'ws://127.0.0.1:18789';
+    this._token = options.token || '';
+    this._ws    = null;
+    this._reqId = 0;
+    this._pending = new Map();
+    this._agents  = [];
+    this._sessions = []; // 金毛的各个会话
+    this._pollTimer = null;
+    this._reconnectTimer = null;
+    this._connected = false;
+  }
+
+  getSessions() { return [...this._sessions]; }
+
+  // ── 公共接口 ────────────────────────────────────────────────────────
+
+  getAgents() { return [...this._agents]; }
+
+  start() {
+    this._connect();
+  }
+
+  stop() {
+    if (this._pollTimer) { clearInterval(this._pollTimer); this._pollTimer = null; }
+    if (this._reconnectTimer) { clearTimeout(this._reconnectTimer); this._reconnectTimer = null; }
+    if (this._ws) { this._ws.close(); this._ws = null; }
+    this._connected = false;
+  }
+
+  // ── WebSocket 连接 ──────────────────────────────────────────────────
+
+  _connect() {
+    this._emit('status', { type: 'connecting' });
+
+    try {
+      this._ws = new WebSocket(this._url);
+    } catch (e) {
+      this._onError(e);
+      return;
+    }
+
+    this._ws.onopen = () => {
+      // 等待服务端发送 connect.challenge 事件，再发送 RPC connect
+    };
+
+    this._ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        this._onMessage(msg);
+      } catch (_) {}
+    };
+
+    this._ws.onerror = (e) => this._onError(e);
+
+    this._ws.onclose = () => {
+      this._connected = false;
+      this._emit('status', { type: 'error' });
+      // 5 秒后重连
+      this._reconnectTimer = setTimeout(() => this._connect(), 5000);
+    };
+  }
+
+  _onMessage(msg) {
+    // 收到 challenge → 发送 RPC connect 握手
+    if (msg.type === 'event' && msg.event === 'connect.challenge') {
+      this._send({
+        type: 'req',
+        id: 'rpg-connect-1',
+        method: 'connect',
+        params: {
+          minProtocol: 3,
+          maxProtocol: 3,
+          client: {
+            id: 'openclaw-tui',
+            version: '1.0.0',
+            platform: 'darwin',
+            mode: 'cli',
+          },
+          caps: ['tool-events'],
+          auth: { token: this._token },
+          role: 'operator',
+          scopes: ['operator.admin'],
+        },
+      });
+      return;
+    }
+
+    // RPC 响应
+    if (msg.type === 'res' && msg.id !== undefined) {
+      // connect 握手成功
+      if (msg.id === 'rpg-connect-1') {
+        if (msg.ok) {
+          this._connected = true;
+          this._emit('status', { type: 'live' });
+          this._startPolling();
+        } else {
+          this._emit('status', { type: 'error' });
+          console.warn('[OpenClawAdapter] connect 失败:', msg.error?.message);
+        }
+        return;
+      }
+      const pending = this._pending.get(msg.id);
+      if (pending) {
+        this._pending.delete(msg.id);
+        if (msg.ok) pending.resolve(msg.payload);
+        else pending.reject(new Error(msg.error?.message || 'RPC error'));
+      }
+      return;
+    }
+
+    // 服务端推送事件（如消息、agent 状态变化）
+    if (msg.type === 'event') {
+      this._onServerEvent(msg);
+    }
+  }
+
+  _onServerEvent(msg) {
+    // chat 事件：流式回复（delta）和完整回复（final）
+    if (msg.event === 'chat') {
+      const { state, message, sessionKey } = msg.payload || {};
+      if (state === 'final' && message?.role === 'assistant') {
+        const text = message.content?.[0]?.text || message.content || '';
+        if (text && !text.startsWith('HEARTBEAT')) {
+          this._emit('reply', { sessionKey, text });
+          // 气泡显示来自对应 agent
+          const agentId = sessionKey?.split(':')?.[1] || 'main';
+          this._emit('message', { fromId: agentId, text: text.slice(0, 50) });
+        }
+      }
+    }
+    // agent 运行状态 → 更新 working/idle
+    if (msg.event === 'agent') {
+      const { phase, delta } = msg.payload?.data || {};
+      const sessionKey = msg.payload.sessionKey;
+      if (phase === 'start') this._emit('agent-running', { sessionKey });
+      if (phase === 'end')   this._emit('agent-idle',    { sessionKey });
+      // 有 delta 文字时 → 从"思考中"切到"回复中"
+      if (delta)             this._emit('agent-replying', { sessionKey });
+    }
+  }
+
+  _onError(e) {
+    this._connected = false;
+    this._emit('status', { type: 'error' });
+    console.warn('[OpenClawAdapter] 连接失败:', e);
+  }
+
+  // ── RPC 请求 ─────────────────────────────────────────────────────────
+
+  _request(method, params = {}) {
+    return new Promise((resolve, reject) => {
+      if (!this._ws || this._ws.readyState !== WebSocket.OPEN) {
+        reject(new Error('not connected'));
+        return;
+      }
+      const id = `rpg-req-${++this._reqId}`;
+      this._pending.set(id, { resolve, reject });
+      this._send({ type: 'req', id, method, params });
+      // 5 秒超时
+      setTimeout(() => {
+        if (this._pending.has(id)) {
+          this._pending.delete(id);
+          reject(new Error('timeout'));
+        }
+      }, 5000);
+    });
+  }
+
+  _send(obj) {
+    if (this._ws && this._ws.readyState === WebSocket.OPEN) {
+      this._ws.send(JSON.stringify(obj));
+    }
+  }
+
+  // ── 轮询：agents + sessions ────────────────────────────────────────
+
+  _startPolling() {
+    this._fetchAll();
+    this._pollTimer = setInterval(() => this._fetchAll(), 5000);
+    // 订阅所有已知 session 的实时消息
+    this._subscribeMessages('agent:main:main');
+    this._subscribeMessages('agent:husky:main');
+  }
+
+  _subscribeMessages(sessionKey) {
+    const id = 'rpg-sub-' + sessionKey.replace(/[^a-z0-9]/gi, '_');
+    this._send({ type: 'req', id, method: 'sessions.messages.subscribe', params: { key: sessionKey } });
+  }
+
+  async _fetchAll() {
+    try {
+      // 1. agents.list → 场景小人
+      const agentsResult = await this._request('agents.list', {});
+      const agents = agentsResult?.agents || [];
+      this._agents = agents.map(a => this._mapAgent(a));
+
+      // 2. sessions.list → 侧边栏会话
+      const sessResult = await this._request('sessions.list', {});
+      this._sessions = (sessResult?.sessions || []).map(s => this._mapSessionEntry(s));
+
+      // 合并 session 状态到对应 agent（判断是否在运行）
+      const running = this._sessions.some(s => s.status === 'running');
+      if (this._agents[0]) this._agents[0].status = running ? 'working' : 'idle';
+
+      this._emit('agents-updated', this.getAgents());
+      this._emit('sessions-updated', this.getSessions());
+    } catch (e) {
+      console.warn('[OpenClawAdapter] 拉取失败:', e.message);
+    }
+  }
+
+  // ── Agent → 场景小人数据 ─────────────────────────────────────────────
+
+  _mapAgent(a) {
+    const isMain  = a.id === 'main';
+    const isHusky = a.id === 'husky';
+    const nameMap = { main: '金毛 🐕', husky: '哈士奇 🐺' };
+    const roleMap = { main: 'leader', husky: 'frontend' };
+    return {
+      id:     a.id,
+      name:   nameMap[a.id] || a.id,
+      role:   roleMap[a.id] || 'backend',
+      status: 'idle',
+      task:   '待机中',
+      model:  a.model?.primary?.split('/').pop() || '—',
+      uptime: '—',
+      tokens: '—',
+      isMain,
+      _raw: a,
+    };
+  }
+
+  // ── Session → 侧边栏条目数据 ─────────────────────────────────────────
+
+  _mapSessionEntry(s) {
+    const key = s.key || '';
+    // 提取可读名称：微信 ID 截断，heartbeat 特殊处理
+    let label = s.displayName || key.split(':').pop() || key;
+    if (label.includes('@im.wechat')) label = '微信用户 💬';
+    else if (label === 'heartbeat') label = '心跳 💓';
+    else if (label.length > 20) label = label.slice(0, 18) + '…';
+
+    // 渠道图标
+    const ch = s.lastChannel || s.origin?.provider || '';
+    const channelIcon = ch.includes('weixin') ? '💬' : ch === 'heartbeat' ? '💓' : '🖥️';
+
+    return {
+      key,
+      label,
+      channelIcon,
+      status: s.status || 'done',
+      updatedAt: s.updatedAt,
+      model: s.model || '—',
+    };
+  }
+
+  _formatUptime(ms) {
+    const s = Math.floor(ms / 1000);
+    if (s < 60)   return `${s}s`;
+    if (s < 3600) return `${Math.floor(s / 60)}m`;
+    return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+  }
+
+  // ── 发消息给指定 session ─────────────────────────────────────────────
+
+  async sendMessage(sessionKey, text) {
+    const key = `rpg-send-${Date.now()}`;
+    return this._request('sessions.send', {
+      key: sessionKey,
+      message: text,
+      idempotencyKey: key,
+    });
+  }
+}
+
+// ─── Agent 管理器 ─────────────────────────────────────────────────────
+
+const AgentManager = {
+  _mode: null,   // 'create' | 'edit'
+  _editId: null, // 编辑时的 agentId
+
+  // ── 公开 API（供 RPG 页面调用）─────────────────────────────────────
+
+  /** 渲染 Agent 管理列表 */
+  renderList() {
+    const el = document.getElementById('agent-manage-list');
+    if (!el) return;
+    const agentData = DataManager._adapter?.getAgents?.() || [];
+    if (!agentData.length) {
+      el.innerHTML = '<p class="detail-empty" style="font-size:0.74rem;padding:4px 0;">无 Agent 数据（请切换到 Live 模式）</p>';
+      return;
+    }
+    el.innerHTML = agentData.map(a => {
+      const isProtected = a.id === 'main';
+      const name = a.name || a.id;
+      const roleColors = { leader:'#FFD700', frontend:'#3498DB', backend:'#27AE60', designer:'#E91E8C', qa:'#E74C3C', default:'#94a3b8' };
+      const dotColor = roleColors[a.role] || roleColors.default;
+      return `
+        <div class="agent-manage-item">
+          <div style="width:8px;height:8px;border-radius:50%;background:${dotColor};flex-shrink:0;"></div>
+          <div style="flex:1;min-width:0;">
+            <div class="ama-name">${name.replace(/</g,'&lt;')}</div>
+            <div class="ama-id">${a.id}</div>
+          </div>
+          <button class="ama-btn" style="background:rgba(59,130,246,0.2);color:#60a5fa;" onclick="AgentManager.showEdit('${a.id}')">编辑</button>
+          ${isProtected ? '' : `<button class="ama-btn" style="background:rgba(239,68,68,0.2);color:#f87171;" onclick="AgentManager.confirmDelete('${a.id}','${name.replace(/'/g,"\\'")}')">删除</button>`}
+        </div>`;
+    }).join('');
+  },
+
+  showCreate() {
+    this._mode = 'create';
+    this._editId = null;
+    document.getElementById('modal-title').textContent = '新增 Agent';
+    document.getElementById('modal-submit-btn').textContent = '创建';
+    document.getElementById('modal-name').value = '';
+    document.getElementById('modal-workspace').value = DataManager._adapter?.getAgents?.()?.[0]?._raw?.workspace || '/Users/chinny/.openclaw/workspace';
+    document.getElementById('modal-emoji').value = '';
+    document.getElementById('modal-err').textContent = '';
+    document.getElementById('agent-modal-overlay').classList.add('open');
+    document.getElementById('modal-name').focus();
+  },
+
+  showEdit(agentId) {
+    const agentData = DataManager._adapter?.getAgents?.() || [];
+    const a = agentData.find(x => x.id === agentId);
+    if (!a) return;
+    this._mode = 'edit';
+    this._editId = agentId;
+    document.getElementById('modal-title').textContent = `编辑 Agent：${a.id}`;
+    document.getElementById('modal-submit-btn').textContent = '保存';
+    document.getElementById('modal-name').value = a.name || '';
+    document.getElementById('modal-workspace').value = a._raw?.workspace || '';
+    document.getElementById('modal-emoji').value = a._raw?.identity?.emoji || '';
+    document.getElementById('modal-err').textContent = '';
+    document.getElementById('agent-modal-overlay').classList.add('open');
+    document.getElementById('modal-name').focus();
+  },
+
+  closeModal() {
+    document.getElementById('agent-modal-overlay').classList.remove('open');
+  },
+
+  async submit() {
+    const name = document.getElementById('modal-name').value.trim();
+    const workspace = document.getElementById('modal-workspace').value.trim();
+    const emoji = document.getElementById('modal-emoji').value.trim();
+    const errEl = document.getElementById('modal-err');
+    const btn = document.getElementById('modal-submit-btn');
+
+    if (!name) { errEl.textContent = '名称不能为空'; return; }
+    if (this._mode === 'create' && !workspace) { errEl.textContent = 'Workspace 路径不能为空'; return; }
+
+    btn.disabled = true;
+    btn.textContent = '处理中…';
+    errEl.textContent = '';
+
+    try {
+      if (this._mode === 'create') {
+        await AgentManager._rpc('agents.create', { name, workspace, ...(emoji ? { emoji } : {}) });
+      } else {
+        const params = { agentId: this._editId, name };
+        if (workspace) params.workspace = workspace;
+        await AgentManager._rpc('agents.update', params);
+      }
+      this.closeModal();
+      // 刷新数据
+      await DataManager._adapter?._fetchAll?.();
+      this.renderList();
+    } catch (e) {
+      errEl.textContent = '❌ ' + e.message;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = this._mode === 'create' ? '创建' : '保存';
+    }
+  },
+
+  confirmDelete(agentId, name) {
+    if (!confirm(`确认删除 Agent「${name}」？\n\n此操作将移除 Agent 配置（不删除 workspace 文件）。`)) return;
+    AgentManager._doDelete(agentId, name);
+  },
+
+  async _doDelete(agentId, name) {
+    try {
+      await AgentManager._rpc('agents.delete', { agentId, deleteFiles: false });
+      // 刷新
+      await DataManager._adapter?._fetchAll?.();
+      this.renderList();
+    } catch (e) {
+      alert('删除失败：' + e.message);
+    }
+  },
+
+  // ── RPC 代理（复用 DataManager 的 Live adapter）──────────────────
+
+  _rpc(method, params) {
+    const adapter = DataManager._adapter;
+    if (!adapter || DataManager._mode !== 'live') {
+      return Promise.reject(new Error('请先切换到 Live 模式'));
+    }
+    return adapter._request(method, params);
+  },
+};
+
+// ─── 数据源管理器（单例）─────────────────────────────────────────────
+
+const DataManager = {
+  _adapter: null,
+  _mode: 'mock',
+
+  init(scene) {
+    this._scene = scene;
+    this._startMock();
+  },
+
+  _startMock() {
+    if (this._adapter) this._adapter.stop();
+    this._adapter = new MockAdapter();
+    this._mode = 'mock';
+    this._bindEvents();
+    this._adapter.start();
+    this._updateConnUI('mock', '本地模式');
+  },
+
+  _startLive() {
+    if (this._adapter) this._adapter.stop();
+    // 从 openclaw.json 中的已知配置
+    this._adapter = new OpenClawAdapter({
+      url:   'ws://127.0.0.1:18789',
+      token: 'fcbd02f22ef8e29b1b8713a5ff4af25915e0df8ca959cfb5',
+    });
+    this._mode = 'live';
+    this._bindEvents();
+    this._adapter.start();
+    this._updateConnUI('connecting', '连接中…');
+  },
+
+  _bindEvents() {
+    this._adapter.on('agents-updated', (agents) => {
+      this._scene.syncAgents(agents);
+    });
+    this._adapter.on('sessions-updated', (sessions) => {
+      this._scene.syncSessions && this._scene.syncSessions(sessions);
+    });
+    // sessionKey → agentId 映射（agent:husky:main → husky）
+    const sessionToAgent = (sessionKey) => sessionKey?.split(':')?.[1] || 'main';
+    this._adapter.on('agent-replying', ({ sessionKey }) => {
+      this._scene.setAgentChatStatus?.(sessionToAgent(sessionKey), 'replying');
+    });
+    this._adapter.on('reply', ({ sessionKey, text }) => {
+      this._scene.appendReply && this._scene.appendReply(text, sessionToAgent(sessionKey));
+    });
+    this._adapter.on('agent-running', ({ sessionKey }) => {
+      const agentId = sessionToAgent(sessionKey);
+      const a = this._adapter.getAgents().find(x => x.id === agentId);
+      if (a) { a.status = 'working'; this._scene.syncAgents(this._adapter.getAgents()); }
+      this._scene.setAgentChatStatus?.(agentId, 'thinking');
+    });
+    this._adapter.on('agent-idle', ({ sessionKey }) => {
+      const agentId = sessionToAgent(sessionKey);
+      const a = this._adapter.getAgents().find(x => x.id === agentId);
+      if (a) { a.status = 'idle'; this._scene.syncAgents(this._adapter.getAgents()); }
+      this._scene.setAgentChatStatus?.(agentId, null);
+    });
+    this._adapter.on('message', ({ fromId, text }) => {
+      this._scene.triggerMessage(fromId, text);
+    });
+    this._adapter.on('status', ({ type }) => {
+      const labels = { mock: '本地模式', live: '已连接', connecting: '连接中…', error: '断开' };
+      this._updateConnUI(type, labels[type] || type);
+    });
+  },
+
+  toggle() {
+    if (this._mode === 'mock') {
+      this._startLive();
+      document.getElementById('btn-live').textContent = '🔌 断开连接';
+      document.getElementById('btn-live').classList.add('active');
+    } else {
+      this._startMock();
+      document.getElementById('btn-live').textContent = '🔌 连接 OpenClaw';
+      document.getElementById('btn-live').classList.remove('active');
+    }
+  },
+
+  getAgents() { return this._adapter ? this._adapter.getAgents() : []; },
+  getSessions() { return this._adapter?.getSessions ? this._adapter.getSessions() : []; },
+
+  async sendMessage(sessionKey, text) {
+    if (!this._adapter?.sendMessage) throw new Error('not connected');
+    return this._adapter.sendMessage(sessionKey, text);
+  },
+
+  _updateConnUI(type, label) {
+    const dot = document.getElementById('conn-dot');
+    const lbl = document.getElementById('conn-label');
+    const btn = document.getElementById('btn-live');
+    if (dot) { dot.className = ''; dot.classList.add(type); }
+    if (lbl) lbl.textContent = label;
+    // 更新连接按钮
+    if (btn) {
+      if (type === 'live') {
+        btn.textContent = '🔌 断开连接'; btn.classList.add('active');
+      } else if (type === 'mock') {
+        btn.textContent = '🔌 连接 OpenClaw'; btn.classList.remove('active');
+      } else if (type === 'error') {
+        btn.textContent = '🔌 重新连接'; btn.classList.remove('active');
+      }
+    }
+  },
+};
+
+// =====================================================================
+// [3] ENGINE
+// 核心引擎：AStar、GameLoop、Camera、Minimap
+// =====================================================================
+
+// ─── A* 寻路 ──────────────────────────────────────────────────────────
+
+class AStar {
+  constructor(tileMap) { this.map = tileMap; }
+
+  findPath(startPixelX, startPixelY, goalPixelX, goalPixelY) {
+    const ts = this.map.tileSize;
+    const sx = Math.floor(startPixelX / ts);
+    const sy = Math.floor(startPixelY / ts);
+    const gx = Math.floor(goalPixelX / ts);
+    const gy = Math.floor(goalPixelY / ts);
+
+    if (!this.map.isWalkable(gx, gy)) return null;
+    if (sx === gx && sy === gy) return [];
+
+    const key = (x, y) => `${x},${y}`;
+    const open   = new Map();
+    const closed = new Set();
+    const gScore = new Map();
+    const fScore = new Map();
+    const parent = new Map();
+    const h = (x, y) => Math.abs(x - gx) + Math.abs(y - gy);
+
+    gScore.set(key(sx, sy), 0);
+    fScore.set(key(sx, sy), h(sx, sy));
+    open.set(key(sx, sy), { x: sx, y: sy });
+
+    const dirs = [
+      { dx: 0, dy: -1 }, { dx: 0, dy: 1 },
+      { dx: -1, dy: 0 }, { dx: 1, dy: 0 },
+      { dx: -1, dy: -1 }, { dx: 1, dy: -1 },
+      { dx: -1, dy: 1  }, { dx: 1, dy: 1  },
+    ];
+
+    let iters = 0;
+    while (open.size > 0 && iters++ < 2000) {
+      let bestKey = null, bestF = Infinity;
+      for (const [k] of open) {
+        const f = fScore.get(k) ?? Infinity;
+        if (f < bestF) { bestF = f; bestKey = k; }
+      }
+
+      const cur = open.get(bestKey);
+      open.delete(bestKey);
+
+      if (cur.x === gx && cur.y === gy) {
+        const path = [];
+        let k = bestKey;
+        while (parent.has(k)) {
+          const [nx, ny] = k.split(',').map(Number);
+          path.unshift({ x: nx * ts + ts / 2, y: ny * ts + ts - 4 });
+          k = parent.get(k);
+        }
+        return path;
+      }
+
+      closed.add(bestKey);
+
+      for (const { dx, dy } of dirs) {
+        const nx = cur.x + dx, ny = cur.y + dy;
+        const nk = key(nx, ny);
+        if (closed.has(nk) || !this.map.isWalkable(nx, ny)) continue;
+        if (dx !== 0 && dy !== 0) {
+          if (!this.map.isWalkable(cur.x + dx, cur.y) ||
+              !this.map.isWalkable(cur.x, cur.y + dy)) continue;
+        }
+        const tentG = (gScore.get(bestKey) ?? Infinity) + (dx !== 0 && dy !== 0 ? 1.414 : 1);
+        if (tentG < (gScore.get(nk) ?? Infinity)) {
+          parent.set(nk, bestKey);
+          gScore.set(nk, tentG);
+          fScore.set(nk, tentG + h(nx, ny));
+          open.set(nk, { x: nx, y: ny });
+        }
+      }
+    }
+    return null;
+  }
+}
+
+// ─── 游戏主循环 ───────────────────────────────────────────────────────
+
+class GameLoop {
+  constructor(updateFn, renderFn) {
+    this.updateFn = updateFn;
+    this.renderFn = renderFn;
+    this.lastTime = 0;
+    this.deltaTime = 0;
+    this.fps = 0;
+    this.frameCount = 0;
+    this.fpsTimer = 0;
+    this.running = false;
+    this.paused = false;
+  }
+
+  start() {
+    if (this.running) return;
+    this.running = true;
+    this.lastTime = performance.now();
+    requestAnimationFrame(this._loop.bind(this));
+  }
+
+  stop() { this.running = false; }
+
+  _loop(now) {
+    if (!this.running) return;
+    this.deltaTime = Math.min((now - this.lastTime) / 1000, 0.1);
+    this.lastTime = now;
+    this.frameCount++;
+    this.fpsTimer += this.deltaTime;
+    if (this.fpsTimer >= 1.0) {
+      this.fps = this.frameCount;
+      this.frameCount = 0;
+      this.fpsTimer = 0;
+      document.getElementById('fps-info').textContent = this.fps;
+    }
+    if (!this.paused) this.updateFn(this.deltaTime);
+    this.renderFn();
+    requestAnimationFrame(this._loop.bind(this));
+  }
+}
+
+// ─── 摄像机（自由拖拽，不跟随玩家）──────────────────────────────────
+
+class Camera {
+  constructor() {
+    this.x = 0; this.y = 0;
+    this.zoom = 1.0;
+    this.dragging = false;
+    this.dragStartX = 0; this.dragStartY = 0;
+    this.dragCamStartX = 0; this.dragCamStartY = 0;
+  }
+
+  begin(ctx) {
+    ctx.save();
+    ctx.setTransform(this.zoom, 0, 0, this.zoom, -this.x * this.zoom, -this.y * this.zoom);
+  }
+  end(ctx) { ctx.restore(); }
+
+  screenToWorld(sx, sy) {
+    return { x: sx / this.zoom + this.x, y: sy / this.zoom + this.y };
+  }
+
+  setZoom(z, mapW, mapH) {
+    const pivotSx = CONFIG.canvasWidth  / 2;
+    const pivotSy = CONFIG.canvasHeight / 2;
+    const worldPX = pivotSx / this.zoom + this.x;
+    const worldPY = pivotSy / this.zoom + this.y;
+    this.zoom = Math.max(CONFIG.zoomMin, Math.min(CONFIG.zoomMax, z));
+    this.x = worldPX - pivotSx / this.zoom;
+    this.y = worldPY - pivotSy / this.zoom;
+    this._clamp(mapW, mapH);
+  }
+
+  _clamp(mapW, mapH) {
+    const viewW = CONFIG.canvasWidth  / this.zoom;
+    const viewH = CONFIG.canvasHeight / this.zoom;
+    if (mapW <= viewW) this.x = -(viewW - mapW) / 2;
+    else this.x = Math.max(0, Math.min(this.x, mapW - viewW));
+    if (mapH <= viewH) this.y = -(viewH - mapH) / 2;
+    else this.y = Math.max(0, Math.min(this.y, mapH - viewH));
+  }
+
+  startDrag(sx, sy) {
+    this.dragging = true;
+    this.dragStartX = sx; this.dragStartY = sy;
+    this.dragCamStartX = this.x; this.dragCamStartY = this.y;
+  }
+  moveDrag(sx, sy, mapW, mapH) {
+    if (!this.dragging) return;
+    this.x = this.dragCamStartX - (sx - this.dragStartX) / this.zoom;
+    this.y = this.dragCamStartY - (sy - this.dragStartY) / this.zoom;
+    this._clamp(mapW, mapH);
+  }
+  endDrag() { this.dragging = false; }
+}
+
+// ─── 小地图 ───────────────────────────────────────────────────────────
+
+class Minimap {
+  constructor(mapRef, minimapCanvas) {
+    this.map = mapRef;
+    this.canvas = minimapCanvas;
+    this.ctx = minimapCanvas.getContext('2d');
+    this._prerender();
+  }
+
+  _prerender() {
+    const { width: mw, height: mh } = this.canvas;
+    const tw = mw / this.map.width;
+    const th = mh / this.map.height;
+    const mc = this.ctx;
+    mc.fillStyle = '#1a1a2e';
+    mc.fillRect(0, 0, mw, mh);
+    const tileColors = ['#2C3E50', '#566573', '#8B6914', '#7B241C', '#196F3D'];
+    for (let y = 0; y < this.map.height; y++) {
+      for (let x = 0; x < this.map.width; x++) {
+        mc.fillStyle = tileColors[this.map.map[y][x]] || '#2C3E50';
+        mc.fillRect(x * tw, y * th, tw, th);
+      }
+    }
+    this._base = mc.getImageData(0, 0, mw, mh);
+  }
+
+  render(agentList, playerObj, cam, mapW, mapH) {
+    const { width: mw, height: mh } = this.canvas;
+    const mc = this.ctx;
+    mc.putImageData(this._base, 0, 0);
+    // 视口框
+    const vx = (cam.x / mapW) * mw;
+    const vy = (cam.y / mapH) * mh;
+    const vw = (CONFIG.canvasWidth  / cam.zoom / mapW) * mw;
+    const vh = (CONFIG.canvasHeight / cam.zoom / mapH) * mh;
+    mc.strokeStyle = 'rgba(255,255,255,0.5)';
+    mc.lineWidth = 1;
+    mc.strokeRect(vx, vy, vw, vh);
+    // Agents
+    for (const ag of agentList) {
+      mc.fillStyle = (ROLE_COLORS[ag.role] || ROLE_COLORS.default).primary;
+      mc.beginPath();
+      mc.arc((ag.x / mapW) * mw, (ag.y / mapH) * mh, 2, 0, Math.PI * 2);
+      mc.fill();
+    }
+    // 玩家
+    mc.fillStyle = '#60a5fa';
+    mc.beginPath();
+    mc.arc((playerObj.x / mapW) * mw, (playerObj.y / mapH) * mh, 2.5, 0, Math.PI * 2);
+    mc.fill();
+  }
+}
+
+// =====================================================================
+// [4] ENTITIES
+// 渲染实体：AgentSprite、AgentEntity、TileMap
+// =====================================================================
+
+// ─── 像素精灵（5 角色 × 3 动画状态）────────────────────────────────
+
+class AgentSprite {
+  constructor(role) {
+    this.role = role;
+    this.ps = CONFIG.pixelScale; // 像素尺寸
+    this.colors = ROLE_COLORS[role] || ROLE_COLORS.default;
+    this.frames = this._generateFrames();
+    this.currentFrame = 0;
+    this.animTimer = 0;
+    this.animSpeed = 0.6;
+    this.state = 'idle';
+    this.facingLeft = false;
+  }
+
+  setState(state, facingLeft = false) {
+    if (this.state !== state || this.facingLeft !== facingLeft) {
+      this.state = state;
+      this.facingLeft = facingLeft;
+      this.currentFrame = 0;
+      this.animTimer = 0;
+      this.animSpeed = state === 'working' ? 0.25 : state.startsWith('walk') ? 0.12 : 0.6;
+    }
+  }
+
+  update(dt) {
+    this.animTimer += dt;
+    const fs = this._frameSet();
+    if (this.animTimer >= this.animSpeed) {
+      this.animTimer = 0;
+      this.currentFrame = (this.currentFrame + 1) % fs.length;
+    }
+  }
+
+  _frameSet() {
+    const key = this.state.startsWith('walk')
+      ? (this.facingLeft ? 'walk_left' : 'walk_right')
+      : this.state;
+    return this.frames[key] || this.frames.idle;
+  }
+
+  render(ctx, x, y) {
+    const frame = this._frameSet()[this.currentFrame];
+    const ps = this.ps;
+    const ox = 12 * ps / 2;
+    const oy = 16 * ps;
+    ctx.save();
+    if (this.facingLeft) {
+      ctx.translate(x, 0); ctx.scale(-1, 1); ctx.translate(-x, 0);
+    }
+    for (let r = 0; r < 16; r++) {
+      for (let c = 0; c < 12; c++) {
+        const color = frame[r][c];
+        if (color) {
+          ctx.fillStyle = color;
+          ctx.fillRect(Math.round(x - ox + c * ps), Math.round(y - oy + r * ps), ps, ps);
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  _generateFrames() {
+    const C = this.colors;
+    const skin = '#F4D03F', dark = '#2C3E50', black = '#1A1A2E';
+    return {
+      idle:       [this._buildIdle(C, skin, dark, black, false), this._buildIdle(C, skin, dark, black, true)],
+      walk_right: [0,1,2,3].map(p => this._buildWalk(C, skin, dark, black, p)),
+      walk_left:  [0,1,2,3].map(p => this._buildWalk(C, skin, dark, black, p)),
+      working:    [this._buildWork(C, skin, dark, black, false), this._buildWork(C, skin, dark, black, true)],
+    };
+  }
+
+  _buildIdle(C, skin, dark, black, alt) {
+    const p = C.primary, s = C.secondary;
+    const crown   = this.role === 'leader'   ? '#FFD700' : null;
+    const glasses = this.role === 'frontend' ? dark      : null;
+    const icon    = this.role === 'backend'  ? '#82E0AA' : null;
+    const brush   = this.role === 'designer' ? '#E91E8C' : null;
+    const magnify = this.role === 'qa'       ? '#E74C3C' : null;
+    return [
+      [null,null,null,crown,crown,crown,crown,crown,null,null,null,null],
+      [null,null,null,null,skin,skin,skin,skin,null,null,null,null],
+      [null,null,skin,skin,skin,skin,skin,skin,skin,skin,null,null],
+      [null,skin,skin,dark,dark,skin,skin,dark,dark,skin,skin,null],
+      glasses
+        ? [null,skin,'#85C1E9','#85C1E9','#85C1E9',skin,skin,'#85C1E9','#85C1E9','#85C1E9',skin,null]
+        : [null,skin,skin,skin,skin,skin,skin,skin,skin,skin,skin,null],
+      [null,skin,skin,skin,skin,alt?'#E74C3C':skin,alt?'#E74C3C':skin,skin,skin,skin,skin,null],
+      [null,skin,skin,skin,skin,skin,skin,skin,skin,skin,skin,null],
+      [null,null,p,p,p,p,p,p,p,p,null,null],
+      [null,p,p,p,p,p,p,p,p,p,p,null],
+      icon    ? [null,p,p,p,'#82E0AA','#82E0AA','#82E0AA','#82E0AA',p,p,p,null]
+      : brush   ? [null,p,p,p,'#E91E8C','#F8C8DC','#E91E8C',p,p,p,p,null]
+      : magnify  ? [null,p,p,p,'#E74C3C','#FFCDD2','#E74C3C',p,p,p,p,null]
+      :            [null,p,p,p,p,s,s,p,p,p,p,null],
+      [null,p,s,s,s,s,s,s,s,s,p,null],
+      [null,p,s,s,s,s,s,s,s,s,p,null],
+      [null,null,dark,null,null,null,null,null,null,dark,null,null],
+      [null,null,dark,null,null,null,null,null,null,dark,null,null],
+      [null,null,black,null,null,null,null,null,null,black,null,null],
+      [null,null,black,null,null,null,null,null,null,black,null,null],
+    ];
+  }
+
+  _buildWalk(C, skin, dark, black, phase) {
+    const lps = [
+      {lL:1,lR:3,fL:1,fR:4},
+      {lL:2,lR:2,fL:2,fR:2},
+      {lL:3,lR:1,fL:4,fR:1},
+      {lL:2,lR:2,fL:2,fR:2},
+    ];
+    const lp = lps[phase];
+    const frame = this._buildIdle(C, skin, dark, black, phase % 2 === 0).map(r => [...r]);
+    frame[12] = Array(12).fill(null); frame[12][lp.lL] = dark; frame[12][11-lp.lR] = dark;
+    frame[13] = Array(12).fill(null); frame[13][lp.lL] = dark; frame[13][11-lp.lR] = dark;
+    frame[14] = Array(12).fill(null); frame[14][lp.fL] = black; frame[14][11-lp.fR] = black;
+    frame[15] = Array(12).fill(null); frame[15][lp.fL] = black; frame[15][11-lp.fR] = black;
+    return frame;
+  }
+
+  _buildWork(C, skin, dark, black, alt) {
+    const p = C.primary, s = C.secondary;
+    const crown = this.role === 'leader' ? '#FFD700' : null;
+    return [
+      [null,null,null,crown,crown,crown,crown,crown,null,null,null,null],
+      [null,null,null,null,skin,skin,skin,skin,null,null,null,null],
+      [null,null,skin,skin,skin,skin,skin,skin,skin,skin,null,null],
+      [null,skin,skin,dark,dark,skin,skin,dark,dark,skin,skin,null],
+      [null,skin,skin,skin,skin,skin,skin,skin,skin,skin,skin,null],
+      [null,skin,skin,skin,skin,'#E74C3C','#E74C3C',skin,skin,skin,skin,null],
+      [null,skin,skin,skin,skin,skin,skin,skin,skin,skin,skin,null],
+      [null,null,p,p,p,p,p,p,p,p,null,null],
+      alt ? [p,p,p,p,p,p,p,p,p,p,p,p] : [null,p,p,p,p,p,p,p,p,p,p,null],
+      [null,p,p,p,p,s,s,p,p,p,p,null],
+      [null,p,s,s,s,s,s,s,s,s,p,null],
+      [null,p,s,s,s,s,s,s,s,s,p,null],
+      [null,null,dark,null,null,null,null,null,null,dark,null,null],
+      [null,null,dark,null,null,null,null,null,null,dark,null,null],
+      [null,null,black,null,null,null,null,null,null,black,null,null],
+      [null,null,black,null,null,null,null,null,null,black,null,null],
+    ];
+  }
+}
+
+class PlayerSprite extends AgentSprite {
+  constructor() { super('leader'); }
+}
+
+// ─── Agent 实体（状态机 + 寻路）──────────────────────────────────────
+
+class AgentEntity {
+  constructor(data, mapRef, astarRef) {
+    this._map   = mapRef;
+    this._astar = astarRef;
+
+    this.id     = data.id;
+    this.name   = data.name;
+    this.role   = data.role;
+    this.status = data.status;
+    this.taskText = data.task;
+    this.model  = data.model;
+    this.uptime = data.uptime;
+    this.tokens = data.tokens;
+
+    this.sprite = new AgentSprite(data.role);
+
+    // 初始位置：先查 agent→workstation 映射，再查坐标
+    const wsKey = AGENT_WORKSTATION[data.id] || data.id;
+    const ws = WORKSTATIONS[wsKey];
+    if (ws) {
+      this.x = ws.x; this.y = ws.y;
+    } else {
+      this.x = 3 * 32 + 16 + Math.random() * 14 * 32;
+      this.y = 3 * 32 + 28 + Math.random() * 8 * 32;
+    }
+
+    // 状态机：idle | walking | working | resting | wandering
+    this.aiState    = 'idle';
+    this.stateTimer = 1 + Math.random() * 3;
+    this.path       = [];
+    this.speed      = 80 + Math.random() * 40;
+    this.wobbleX    = 0;
+    this.wobbleTimer = Math.random() * Math.PI * 2;
+    this._walkGoal  = null;
+
+    // 聊天状态：null | 'thinking' | 'replying'
+    this.chatStatus = null;
+
+    this.sprite.setState('idle');
+  }
+
+  /** 外部数据更新（DataAdapter 推送时调用） */
+  syncData(data) {
+    this.name   = data.name;
+    this.status = data.status;
+    this.taskText = data.task;
+    this.model  = data.model;
+    this.uptime = data.uptime;
+    this.tokens = data.tokens;
+    // 状态驱动行为：真实 working → 尽快去工位
+    if (data.status === 'working' && this.aiState === 'idle') {
+      this.stateTimer = 0; // 触发立即行动
+    }
+  }
+
+  update(dt) {
+    this.sprite.update(dt);
+    this.stateTimer -= dt;
+
+    switch (this.aiState) {
+      case 'idle':
+        if (this.stateTimer <= 0) this._goToWorkstation();
+        break;
+      case 'walking':
+        this._followPath(dt);
+        break;
+      case 'working':
+        this.wobbleTimer += dt * 8;
+        this.wobbleX = Math.sin(this.wobbleTimer) * 0.8;
+        if (this.stateTimer <= 0) this._startRest();
+        break;
+      case 'resting':
+        if (this.stateTimer <= 0) this._startWander();
+        break;
+      case 'wandering':
+        this._followPath(dt);
+        break;
+    }
+
+    this.status = this.aiState === 'working' ? 'working' : 'idle';
+  }
+
+  _goToWorkstation() {
+    const wsKey = AGENT_WORKSTATION[this.id] || this.id;
+    const ws = WORKSTATIONS[wsKey];
+    if (!ws) { this._startIdle(3); return; }
+    const path = this._astar.findPath(this.x, this.y, ws.x, ws.y);
+    if (path && path.length > 0) {
+      this.path = path;
+      this.aiState = 'walking';
+      this.sprite.setState('walk_right');
+      this._walkGoal = 'workstation';
+    } else {
+      this._startWork();
+    }
+  }
+
+  _startWander() {
+    const ts = CONFIG.tileSize;
+    for (let i = 0; i < 30; i++) {
+      const tx = 1 + Math.floor(Math.random() * (this._map.width - 2));
+      const ty = 1 + Math.floor(Math.random() * (this._map.height - 2));
+      if (!this._map.isWalkable(tx, ty)) continue;
+      const gx = tx * ts + ts / 2;
+      const gy = ty * ts + ts - 4;
+      const path = this._astar.findPath(this.x, this.y, gx, gy);
+      if (path && path.length > 0) {
+        this.path = path;
+        this.aiState = 'wandering';
+        this.sprite.setState('walk_right');
+        this._walkGoal = 'wander';
+        return;
+      }
+    }
+    this._startIdle(2);
+  }
+
+  _startWork() {
+    this.aiState = 'working';
+    this.stateTimer = 5 + Math.random() * 10;
+    this.wobbleX = 0;
+    this.sprite.setState('working');
+  }
+
+  _startRest() {
+    this.aiState = 'resting';
+    this.stateTimer = 2 + Math.random() * 4;
+    this.wobbleX = 0;
+    this.sprite.setState('idle');
+  }
+
+  _startIdle(duration) {
+    this.aiState = 'idle';
+    this.stateTimer = duration || (3 + Math.random() * 5);
+    this.wobbleX = 0;
+    this.sprite.setState('idle');
+  }
+
+  _followPath(dt) {
+    if (this.path.length === 0) {
+      if (this._walkGoal === 'workstation') this._startWork();
+      else this._startRest();
+      return;
+    }
+    const target = this.path[0];
+    const dx = target.x - this.x;
+    const dy = target.y - this.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    this.sprite.setState('walk_right', dx < -1);
+    if (dist < 4) {
+      this.x = target.x; this.y = target.y;
+      this.path.shift();
+    } else {
+      const step = this.speed * dt;
+      this.x += (dx / dist) * step;
+      this.y += (dy / dist) * step;
+    }
+  }
+
+  render(ctx, selectedId) {
+    const rx = Math.round(this.x + this.wobbleX);
+    const ry = Math.round(this.y);
+    const ps = CONFIG.pixelScale;
+    const colors = ROLE_COLORS[this.role] || ROLE_COLORS.default;
+
+    // 选中光晕
+    if (selectedId === this.id) {
+      ctx.save();
+      ctx.shadowColor = colors.primary;
+      ctx.shadowBlur = 18;
+      ctx.fillStyle = colors.primary + '22';
+      ctx.fillRect(rx - 12*ps/2, ry - 16*ps, 12*ps, 16*ps);
+      ctx.restore();
+    }
+
+    this.sprite.render(ctx, rx, ry);
+
+    // 名称标签
+    ctx.save();
+    ctx.font = `bold 9px 'Monaco', monospace`;
+    ctx.textAlign = 'center';
+    const lw = ctx.measureText(this.name).width + 8;
+    const ly = ry - 16*ps - 14;
+    ctx.fillStyle = 'rgba(0,0,0,0.65)';
+    ctx.fillRect(rx - lw/2, ly, lw, 13);
+    ctx.fillStyle = colors.primary;
+    ctx.fillText(this.name, rx, ly + 9);
+    ctx.restore();
+
+    // 聊天状态浮标（在名称上方）
+    if (this.chatStatus) {
+      const t = Date.now();
+      const dots = '.'.repeat(Math.floor(t / 400) % 4);
+      const statusText = this.chatStatus === 'thinking'
+        ? `💭 思考中${dots}`
+        : `✍️ 回复中${dots}`;
+      ctx.save();
+      ctx.font = `bold 8px 'Monaco', monospace`;
+      ctx.textAlign = 'center';
+      const sw = ctx.measureText(statusText).width + 10;
+      const sy2 = ly - 16;
+      // 动态呼吸透明度
+      const alpha = 0.7 + 0.3 * Math.sin(t / 300);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = this.chatStatus === 'thinking' ? 'rgba(99,102,241,0.85)' : 'rgba(34,197,94,0.85)';
+      ctx.beginPath();
+      ctx.roundRect?.(rx - sw/2, sy2, sw, 12, 4) ?? ctx.fillRect(rx - sw/2, sy2, sw, 12);
+      ctx.fill();
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = '#fff';
+      ctx.fillText(statusText, rx, sy2 + 9);
+      ctx.restore();
+    }
+
+    // 状态指示灯
+    const bx = rx + 16, by = ry - 16*ps - 4;
+    if (this.aiState === 'working') {
+      ctx.save();
+      ctx.fillStyle = '#27AE60';
+      ctx.beginPath(); ctx.arc(bx, by, 4, 0, Math.PI*2); ctx.fill();
+      const pulse = (Math.sin(Date.now() / 280) + 1) / 2;
+      ctx.fillStyle = 'rgba(39,174,96,0.3)';
+      ctx.beginPath(); ctx.arc(bx, by, 4 + pulse*5, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+    } else if (this.aiState === 'walking' || this.aiState === 'wandering') {
+      ctx.save();
+      ctx.fillStyle = '#F39C12';
+      ctx.beginPath(); ctx.arc(bx, by, 3, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  hitTest(px, py) {
+    const ps = CONFIG.pixelScale;
+    const hw = 12*ps/2, hh = 16*ps;
+    return px >= this.x - hw && px <= this.x + hw &&
+           py >= this.y - hh && py <= this.y;
+  }
+}
+
+// ─── 瓦片地图（20×15，640×480）──────────────────────────────────────
+
+class TileMap {
+  constructor(width, height, tileSize) {
+    this.width = width;
+    this.height = height;
+    this.tileSize = tileSize;
+    this._defineTiles();
+    this._buildMap();
+  }
+
+  _defineTiles() {
+    // Helper: draw pixel detail
+    const px = (ctx, x, y, ts) => {};
+    this.tiles = [
+      // 0: 地板（深色地板砖，带接缝）
+      { walkable: true, render: (ctx, x, y, ts) => {
+        ctx.fillStyle = '#1e2a38'; ctx.fillRect(x, y, ts, ts);
+        ctx.fillStyle = '#263545'; ctx.fillRect(x+1, y+1, ts-2, ts-2);
+        // 砖缝
+        ctx.fillStyle = '#182230'; ctx.fillRect(x, y, ts, 1); ctx.fillRect(x, y, 1, ts);
+        // 高光点
+        ctx.fillStyle = '#2e3f54'; ctx.fillRect(x+6, y+6, 3, 3);
+      }},
+      // 1: 墙（砖块纹理）
+      { walkable: false, render: (ctx, x, y, ts) => {
+        ctx.fillStyle = '#4a5568'; ctx.fillRect(x, y, ts, ts);
+        // 砖块行
+        const row = Math.floor(y / ts) % 2;
+        const brickH = 10, brickW = 16;
+        ctx.fillStyle = '#374151';
+        for (let by = 2; by < ts-2; by += brickH+1) {
+          const offset = (by/11 % 2 === 0) ? (row * 8) : 0;
+          for (let bx = -offset; bx < ts; bx += brickW+1) {
+            ctx.fillRect(x+bx+1, y+by+1, brickW-1, brickH-1);
+          }
+        }
+        // 顶部高光
+        ctx.fillStyle = '#6b7280'; ctx.fillRect(x, y, ts, 2);
+      }},
+      // 2: 开发桌（带显示器）
+      { walkable: false, render: (ctx, x, y, ts) => {
+        ctx.fillStyle = '#1e2a38'; ctx.fillRect(x, y, ts, ts);
+        // 桌面
+        ctx.fillStyle = '#7d5a2a'; ctx.fillRect(x+2, y+16, ts-4, ts-18);
+        ctx.fillStyle = '#9b7a3a'; ctx.fillRect(x+3, y+17, ts-6, 4);
+        // 显示器
+        ctx.fillStyle = '#111827'; ctx.fillRect(x+6, y+4, 20, 13);
+        ctx.fillStyle = '#1e40af'; ctx.fillRect(x+7, y+5, 18, 11);
+        // 屏幕光
+        ctx.fillStyle = '#3b82f6'; ctx.fillRect(x+8, y+6, 6, 2);
+        ctx.fillStyle = '#60a5fa'; ctx.fillRect(x+8, y+9, 10, 1);
+        ctx.fillStyle = '#93c5fd'; ctx.fillRect(x+8, y+11, 8, 1);
+        // 显示器支架
+        ctx.fillStyle = '#374151'; ctx.fillRect(x+14, y+17, 4, 2);
+        // 键盘
+        ctx.fillStyle = '#374151'; ctx.fillRect(x+8, y+20, 16, 5);
+        ctx.fillStyle = '#4b5563'; ctx.fillRect(x+9, y+21, 14, 3);
+        // 鼠标
+        ctx.fillStyle = '#4b5563'; ctx.fillRect(x+24, y+21, 4, 5);
+        ctx.fillStyle = '#6b7280'; ctx.fillRect(x+25, y+22, 2, 2);
+      }},
+      // 3: 会议桌（深红木纹）
+      { walkable: false, render: (ctx, x, y, ts) => {
+        ctx.fillStyle = '#1e2a38'; ctx.fillRect(x, y, ts, ts);
+        ctx.fillStyle = '#6b2020'; ctx.fillRect(x+1, y+1, ts-2, ts-2);
+        ctx.fillStyle = '#7f2828'; ctx.fillRect(x+2, y+2, ts-4, ts-4);
+        // 木纹
+        ctx.fillStyle = '#8b3030'; ctx.fillRect(x+4, y+6, ts-8, 2);
+        ctx.fillStyle = '#8b3030'; ctx.fillRect(x+4, y+14, ts-8, 2);
+        ctx.fillStyle = '#8b3030'; ctx.fillRect(x+4, y+22, ts-8, 2);
+        // 高光
+        ctx.fillStyle = '#c44040'; ctx.fillRect(x+2, y+2, ts-4, 2);
+      }},
+      // 4: 植物（绿植）
+      { walkable: false, render: (ctx, x, y, ts) => {
+        ctx.fillStyle = '#1e2a38'; ctx.fillRect(x, y, ts, ts);
+        // 花盆
+        ctx.fillStyle = '#92400e'; ctx.fillRect(x+9, y+22, 14, 8);
+        ctx.fillStyle = '#b45309'; ctx.fillRect(x+10, y+23, 12, 6);
+        // 叶子层
+        ctx.fillStyle = '#166534'; ctx.fillRect(x+6, y+14, 20, 10);
+        ctx.fillStyle = '#15803d'; ctx.fillRect(x+8, y+10, 16, 10);
+        ctx.fillStyle = '#16a34a'; ctx.fillRect(x+10, y+6, 12, 10);
+        ctx.fillStyle = '#22c55e'; ctx.fillRect(x+12, y+4, 8, 8);
+        // 高光
+        ctx.fillStyle = '#4ade80'; ctx.fillRect(x+14, y+5, 3, 3);
+      }},
+      // 5: 书架（带书）
+      { walkable: false, render: (ctx, x, y, ts) => {
+        ctx.fillStyle = '#1e2a38'; ctx.fillRect(x, y, ts, ts);
+        // 框架
+        ctx.fillStyle = '#92400e'; ctx.fillRect(x+2, y+1, ts-4, ts-2);
+        ctx.fillStyle = '#78350f'; ctx.fillRect(x+3, y+2, ts-6, ts-4);
+        // 书本（颜色各异）
+        const books = ['#dc2626','#2563eb','#16a34a','#d97706','#7c3aed','#0891b2','#be185d'];
+        books.forEach((c, i) => {
+          ctx.fillStyle = c; ctx.fillRect(x+4+i*4, y+4, 3, 10);
+          ctx.fillStyle = '#fff'; ctx.fillRect(x+4+i*4, y+4, 3, 1);
+        });
+        // 第二排书
+        const books2 = ['#0284c7','#ea580c','#15803d','#9333ea','#e11d48'];
+        books2.forEach((c, i) => {
+          ctx.fillStyle = c; ctx.fillRect(x+4+i*4, y+17, 3, 10);
+        });
+        // 隔板
+        ctx.fillStyle = '#92400e'; ctx.fillRect(x+2, y+15, ts-4, 2);
+        ctx.fillStyle = '#92400e'; ctx.fillRect(x+2, y+27, ts-4, 2);
+      }},
+      // 6: 服务器/机柜
+      { walkable: false, render: (ctx, x, y, ts) => {
+        ctx.fillStyle = '#1e2a38'; ctx.fillRect(x, y, ts, ts);
+        // 机箱
+        ctx.fillStyle = '#374151'; ctx.fillRect(x+4, y+2, ts-8, ts-4);
+        ctx.fillStyle = '#4b5563'; ctx.fillRect(x+5, y+3, ts-10, ts-6);
+        // LED 指示灯
+        [[0,'#22c55e'],[1,'#22c55e'],[2,'#3b82f6'],[3,'#f59e0b'],[4,'#22c55e'],
+         [5,'#22c55e'],[6,'#10b981'],[7,'#ef4444']].forEach(([i, c]) => {
+          ctx.fillStyle = c; ctx.fillRect(x+6, y+5+i*3, 3, 2);
+        });
+        // 插槽线
+        ctx.fillStyle = '#1f2937';
+        for (let i = 0; i < 8; i++) ctx.fillRect(x+10, y+4+i*3, ts-15, 1);
+        // 散热口
+        ctx.fillStyle = '#374151'; ctx.fillRect(x+5, y+26, ts-10, 4);
+        for (let i = 0; i < 5; i++) { ctx.fillStyle = '#1f2937'; ctx.fillRect(x+7+i*4, y+27, 2, 2); }
+      }},
+      // 7: 咖啡机
+      { walkable: false, render: (ctx, x, y, ts) => {
+        ctx.fillStyle = '#1e2a38'; ctx.fillRect(x, y, ts, ts);
+        // 机体
+        ctx.fillStyle = '#1f2937'; ctx.fillRect(x+6, y+6, 20, 22);
+        ctx.fillStyle = '#374151'; ctx.fillRect(x+7, y+7, 18, 20);
+        // 显示屏
+        ctx.fillStyle = '#0f172a'; ctx.fillRect(x+10, y+9, 12, 6);
+        ctx.fillStyle = '#0d9488'; ctx.fillRect(x+11, y+10, 10, 4);
+        ctx.fillStyle = '#2dd4bf'; ctx.fillRect(x+12, y+11, 4, 2);
+        // 按钮
+        ctx.fillStyle = '#22c55e'; ctx.fillRect(x+10, y+17, 4, 3);
+        ctx.fillStyle = '#3b82f6'; ctx.fillRect(x+16, y+17, 4, 3);
+        // 杯子托盘
+        ctx.fillStyle = '#374151'; ctx.fillRect(x+8, y+26, 16, 2);
+        // 杯子
+        ctx.fillStyle = '#f8fafc'; ctx.fillRect(x+13, y+22, 6, 4);
+        ctx.fillStyle = '#7c3aed'; ctx.fillRect(x+14, y+23, 4, 2);
+      }},
+      // 8: 窗户（墙上）
+      { walkable: false, render: (ctx, x, y, ts) => {
+        ctx.fillStyle = '#4a5568'; ctx.fillRect(x, y, ts, ts);
+        // 窗框
+        ctx.fillStyle = '#6b7280'; ctx.fillRect(x+3, y+3, ts-6, ts-6);
+        // 玻璃（外景：蓝天）
+        ctx.fillStyle = '#1e3a5f'; ctx.fillRect(x+4, y+4, ts-8, ts-8);
+        ctx.fillStyle = '#2563eb'; ctx.fillRect(x+4, y+4, ts-8, 8);
+        ctx.fillStyle = '#3b82f6'; ctx.fillRect(x+4, y+5, ts-8, 5);
+        // 云
+        ctx.fillStyle = '#e2e8f0'; ctx.fillRect(x+6, y+6, 6, 3); ctx.fillRect(x+8, y+5, 4, 2);
+        // 十字窗格
+        ctx.fillStyle = '#6b7280'; ctx.fillRect(x+15, y+4, 2, ts-8); ctx.fillRect(x+4, y+15, ts-8, 2);
+      }},
+      // 9: 白板（空白）
+      { walkable: false, render: (ctx, x, y, ts) => {
+        ctx.fillStyle = '#1e2a38'; ctx.fillRect(x, y, ts, ts);
+        // 白板框
+        ctx.fillStyle = '#374151'; ctx.fillRect(x+2, y+2, ts-4, ts-4);
+        ctx.fillStyle = '#f8fafc'; ctx.fillRect(x+3, y+3, ts-6, ts-6);
+        // 板书内容
+        ctx.fillStyle = '#1e40af'; ctx.fillRect(x+5, y+7, 12, 1); // 蓝字
+        ctx.fillStyle = '#1e40af'; ctx.fillRect(x+5, y+11, 8, 1);
+        ctx.fillStyle = '#dc2626'; ctx.fillRect(x+15, y+9, 8, 1); // 红字
+        ctx.fillStyle = '#15803d'; ctx.fillRect(x+5, y+15, 14, 1); // 绿字
+        ctx.fillStyle = '#1e40af'; ctx.fillRect(x+5, y+19, 10, 1);
+        // 磁性笔槽
+        ctx.fillStyle = '#6b7280'; ctx.fillRect(x+3, y+ts-6, ts-6, 3);
+      }},
+      // 10: 沙发/休息区
+      { walkable: false, render: (ctx, x, y, ts) => {
+        ctx.fillStyle = '#1e2a38'; ctx.fillRect(x, y, ts, ts);
+        // 沙发座垫
+        ctx.fillStyle = '#44403c'; ctx.fillRect(x+2, y+14, ts-4, ts-16);
+        ctx.fillStyle = '#57534e'; ctx.fillRect(x+3, y+15, ts-6, ts-18);
+        // 靠背
+        ctx.fillStyle = '#44403c'; ctx.fillRect(x+2, y+8, ts-4, 8);
+        ctx.fillStyle = '#57534e'; ctx.fillRect(x+3, y+9, ts-6, 6);
+        // 扶手
+        ctx.fillStyle = '#44403c'; ctx.fillRect(x+2, y+10, 5, 16);
+        ctx.fillStyle = '#44403c'; ctx.fillRect(x+ts-7, y+10, 5, 16);
+        // 抱枕
+        ctx.fillStyle = '#7c3aed'; ctx.fillRect(x+8, y+12, 6, 8);
+        ctx.fillStyle = '#9333ea'; ctx.fillRect(x+9, y+13, 4, 6);
+        // 腿
+        ctx.fillStyle = '#292524'; ctx.fillRect(x+4, y+ts-5, 4, 4); ctx.fillRect(x+ts-8, y+ts-5, 4, 4);
+      }},
+      // 11: 地毯（会议区用）
+      { walkable: true, render: (ctx, x, y, ts) => {
+        ctx.fillStyle = '#1a2535'; ctx.fillRect(x, y, ts, ts);
+        ctx.fillStyle = '#1e3050'; ctx.fillRect(x+1, y+1, ts-2, ts-2);
+        // 花纹
+        ctx.fillStyle = '#2d4a7a'; ctx.fillRect(x+4, y+4, ts-8, ts-8);
+        ctx.fillStyle = '#1e3050'; ctx.fillRect(x+8, y+8, ts-16, ts-16);
+        ctx.fillStyle = '#3b6199'; ctx.fillRect(x+6, y+6, 2, 2); ctx.fillRect(x+ts-8, y+6, 2, 2);
+        ctx.fillStyle = '#3b6199'; ctx.fillRect(x+6, y+ts-8, 2, 2); ctx.fillRect(x+ts-8, y+ts-8, 2, 2);
+      }},
+      // 12: 走廊/过道（略亮地板）
+      { walkable: true, render: (ctx, x, y, ts) => {
+        ctx.fillStyle = '#243040'; ctx.fillRect(x, y, ts, ts);
+        ctx.fillStyle = '#2c3b50'; ctx.fillRect(x+1, y+1, ts-2, ts-2);
+        ctx.fillStyle = '#1c2838'; ctx.fillRect(x, y, ts, 1); ctx.fillRect(x, y, 1, ts);
+        ctx.fillStyle = '#344560'; ctx.fillRect(x+12, y+12, 8, 8);
+      }},
+      // 13: 台灯/落地灯
+      { walkable: false, render: (ctx, x, y, ts) => {
+        ctx.fillStyle = '#1e2a38'; ctx.fillRect(x, y, ts, ts);
+        // 灯罩
+        ctx.fillStyle = '#b45309'; ctx.fillRect(x+8, y+4, 16, 8);
+        ctx.fillStyle = '#d97706'; ctx.fillRect(x+10, y+5, 12, 6);
+        // 灯光（发光效果）
+        ctx.fillStyle = 'rgba(251,191,36,0.25)'; ctx.fillRect(x+6, y+10, 20, 10);
+        ctx.fillStyle = 'rgba(251,191,36,0.1)'; ctx.fillRect(x+4, y+18, 24, 8);
+        // 灯杆
+        ctx.fillStyle = '#6b7280'; ctx.fillRect(x+15, y+12, 2, 14);
+        // 底座
+        ctx.fillStyle = '#374151'; ctx.fillRect(x+10, y+26, 12, 4);
+        ctx.fillStyle = '#4b5563'; ctx.fillRect(x+11, y+27, 10, 2);
+      }},
+    ];
+  }
+
+  _buildMap() {
+    // 地图 30×22 (960×704)
+    // 图例: W=墙 F=地板 D=开发桌 M=会议桌 P=植物 S=书架 V=服务器 C=咖啡机 N=窗户 B=白板 O=沙发 R=地毯 L=走廊 T=台灯
+    const W=1, F=0, D=2, M=3, P=4, S=5, V=6, C=7, N=8, B=9, O=10, R=11, L=12, T=13;
+    this.map = [
+      //  0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29
+      [W, W, W, W, W, W, W, W, W, W, W, W, W, W, W, W, W, W, W, W, W, W, W, W, W, W, W, W, W, W], // 0
+      [W, S, S, W, N, W, N, W, N, W, F, F, F, F, F, F, W, N, W, N, W, N, W, F, F, F, F, F, F, W], // 1
+      [W, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, W], // 2
+      [W, F, F, F, F, D, F, F, D, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, W], // 3
+      [W, F, F, F, F, F, F, F, F, F, F, F, F, F, F, D, F, F, F, F, F, F, F, F, F, F, F, F, F, W], // 4
+      [W, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, W], // 5
+      [W, F, F, W, W, W, W, W, W, W, W, W, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, W], // 6
+      [W, F, F, W, R, R, R, R, R, R, R, W, F, F, F, F, F, F, F, F, F, F, F, B, B, F, V, V, F, W], // 7
+      [W, F, F, W, R, M, M, M, M, M, R, W, F, F, F, F, F, F, F, F, F, F, F, F, F, F, V, V, F, W], // 8
+      [W, F, F, W, R, M, F, F, F, M, R, W, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, W], // 9
+      [W, F, F, W, R, M, F, F, F, M, R, W, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, W], // 10
+      [W, F, F, W, R, M, M, M, M, M, R, W, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, W], // 11
+      [W, F, F, W, R, R, R, R, R, R, R, W, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, P, W], // 12
+      [W, F, F, W, W, W, F, W, W, W, W, W, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, W], // 13
+      [W, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, W], // 14
+      [W, F, F, F, F, D, F, F, D, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, W], // 15
+      [W, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, W], // 16
+      [W, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, W], // 17
+      [W, O, O, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, C, F, T, F, P, F, W], // 18
+      [W, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, W], // 19
+      [W, S, S, W, N, W, N, W, N, W, F, F, F, F, F, F, W, N, W, N, W, N, W, F, F, F, F, F, F, W], // 20
+      [W, W, W, W, W, W, W, W, W, W, W, W, W, W, W, W, W, W, W, W, W, W, W, W, W, W, W, W, W, W], // 21
+    ];
+  }
+
+  isWalkable(tx, ty) {
+    if (tx < 0 || tx >= this.width || ty < 0 || ty >= this.height) return false;
+    return this.tiles[this.map[ty][tx]].walkable;
+  }
+
+  render(ctx, cam) {
+    const ts = this.tileSize;
+    const startX = cam ? Math.max(0, Math.floor(cam.x / ts) - 1) : 0;
+    const startY = cam ? Math.max(0, Math.floor(cam.y / ts) - 1) : 0;
+    const viewW  = cam ? CONFIG.canvasWidth  / cam.zoom : CONFIG.canvasWidth;
+    const viewH  = cam ? CONFIG.canvasHeight / cam.zoom : CONFIG.canvasHeight;
+    const endX   = cam ? Math.min(this.width,  Math.ceil((cam.x + viewW) / ts) + 1) : this.width;
+    const endY   = cam ? Math.min(this.height, Math.ceil((cam.y + viewH) / ts) + 1) : this.height;
+    for (let y = startY; y < endY; y++) {
+      for (let x = startX; x < endX; x++) {
+        this.tiles[this.map[y][x]].render(ctx, x*ts, y*ts, ts);
+      }
+    }
+  }
+}
+
+// =====================================================================
+// [5] SYSTEMS
+// 对话气泡、通信连线粒子
+// =====================================================================
+
+class BubbleSystem {
+  constructor() { this.bubbles = []; }
+
+  show(agentId, text, duration = 3.5) {
+    this.bubbles = this.bubbles.filter(b => b.agentId !== agentId);
+    this.bubbles.push({ agentId, text, duration, elapsed: 0, alpha: 0, lines: [] });
+  }
+
+  update(dt) {
+    for (const b of this.bubbles) {
+      b.elapsed += dt;
+      if      (b.elapsed < 0.3)                      b.alpha = b.elapsed / 0.3;
+      else if (b.elapsed > b.duration - 0.4)         b.alpha = Math.max(0, (b.duration - b.elapsed) / 0.4);
+      else                                            b.alpha = 1;
+    }
+    this.bubbles = this.bubbles.filter(b => b.elapsed < b.duration);
+  }
+
+  render(ctx, agentList) {
+    for (const b of this.bubbles) {
+      const ag = agentList.find(a => a.id === b.agentId);
+      if (!ag) continue;
+      const maxW = 130, padding = 6, lineH = 12, fontSize = 10;
+      if (b.lines.length === 0) {
+        ctx.font = `${fontSize}px 'Monaco', monospace`;
+        let line = '';
+        for (const ch of b.text.split('')) {
+          const test = line + ch;
+          if (ctx.measureText(test).width > maxW - padding*2) { b.lines.push(line); line = ch; }
+          else line = test;
+        }
+        if (line) b.lines.push(line);
+      }
+      ctx.font = `${fontSize}px 'Monaco', monospace`;
+      const textW = Math.min(maxW, Math.max(...b.lines.map(l => ctx.measureText(l).width)) + padding*2);
+      const boxH  = b.lines.length * lineH + padding*2 + 6;
+      const bx = ag.x - textW/2;
+      const by = ag.y - 16*CONFIG.pixelScale - boxH - 18;
+      const color = (ROLE_COLORS[ag.role] || ROLE_COLORS.default).primary;
+      ctx.save();
+      ctx.globalAlpha = b.alpha;
+      ctx.fillStyle = 'rgba(15,15,35,0.92)';
+      this._roundRect(ctx, bx, by, textW, boxH-6, 6); ctx.fill();
+      ctx.strokeStyle = color+'cc'; ctx.lineWidth = 1.5;
+      this._roundRect(ctx, bx, by, textW, boxH-6, 6); ctx.stroke();
+      ctx.fillStyle = 'rgba(15,15,35,0.92)';
+      ctx.beginPath();
+      ctx.moveTo(ag.x-5, by+boxH-6); ctx.lineTo(ag.x+5, by+boxH-6); ctx.lineTo(ag.x, by+boxH);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = color+'cc'; ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(ag.x-5, by+boxH-6); ctx.lineTo(ag.x, by+boxH); ctx.lineTo(ag.x+5, by+boxH-6);
+      ctx.stroke();
+      ctx.fillStyle = '#e2e8f0'; ctx.textAlign = 'left';
+      b.lines.forEach((line, i) => ctx.fillText(line, bx+padding, by+padding+fontSize+i*lineH));
+      ctx.restore();
+    }
+  }
+
+  _roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x+r, y); ctx.lineTo(x+w-r, y); ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+    ctx.lineTo(x+w, y+h-r); ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+    ctx.lineTo(x+r, y+h); ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+    ctx.lineTo(x, y+r); ctx.quadraticCurveTo(x, y, x+r, y);
+    ctx.closePath();
+  }
+}
+
+class CommSystem {
+  constructor() {
+    this.connections = [];
+    this.eventTimer  = 4 + Math.random() * 4;
+    this.messages = {
+      leader:   ['架构方案已更新', '拉通一下进度', '顶层设计确认', '需要对齐一下'],
+      frontend: ['组件开发完成', '样式已调整', '等待 API 接口', 'UI review 请查看'],
+      backend:  ['接口已就绪', '数据库迁移完成', '性能优化中', 'API 文档更新'],
+      designer: ['设计稿已交付', '配色方案确认', '组件库更新', '图标已导出'],
+      qa:       ['测试用例编写中', '发现 2 个 bug', '回归测试通过', '性能测试完成'],
+    };
+  }
+
+  trigger(fromId, toId, text, agentList, bubbleSystem) {
+    const from = agentList.find(a => a.id === fromId);
+    const to   = agentList.find(a => a.id === toId);
+    if (!from || !to || fromId === toId) return;
+    const msgs = this.messages[from.role] || ['处理中…'];
+    const msg  = text || msgs[Math.floor(Math.random() * msgs.length)];
+    bubbleSystem.show(fromId, msg, 3.5);
+    const numP = 5 + Math.floor(Math.random() * 4);
+    this.connections.push({
+      fromId, toId,
+      elapsed: 0, duration: 2.5,
+      color: (ROLE_COLORS[from.role] || ROLE_COLORS.default).primary,
+      particles: Array.from({ length: numP }, (_, i) => ({
+        progress: -(i * 0.15),
+        speed: 0.4 + Math.random() * 0.3,
+        size: 2 + Math.random() * 2,
+      })),
+    });
+  }
+
+  update(dt, agentList, bubbleSystem) {
+    this.eventTimer -= dt;
+    if (this.eventTimer <= 0 && agentList.length >= 2) {
+      this.eventTimer = 3 + Math.random() * 5;
+      const idx1 = Math.floor(Math.random() * agentList.length);
+      let idx2 = Math.floor(Math.random() * (agentList.length - 1));
+      if (idx2 >= idx1) idx2++;
+      this.trigger(agentList[idx1].id, agentList[idx2].id, null, agentList, bubbleSystem);
+    }
+    for (const conn of this.connections) {
+      conn.elapsed += dt;
+      for (const p of conn.particles) { if (p.progress < 1) p.progress += p.speed * dt; }
+    }
+    this.connections = this.connections.filter(c => c.elapsed < c.duration);
+  }
+
+  render(ctx, agentList) {
+    for (const conn of this.connections) {
+      const from = agentList.find(a => a.id === conn.fromId);
+      const to   = agentList.find(a => a.id === conn.toId);
+      if (!from || !to) continue;
+      const fx = from.x, fy = from.y - 16*CONFIG.pixelScale*0.5;
+      const tx = to.x,   ty = to.y   - 16*CONFIG.pixelScale*0.5;
+      const fadeIn  = Math.min(1, conn.elapsed / 0.3);
+      const fadeOut = Math.max(0, (conn.duration - conn.elapsed) / 0.5);
+      const alpha   = Math.min(fadeIn, fadeOut);
+      ctx.save();
+      ctx.globalAlpha = alpha * 0.5;
+      ctx.strokeStyle = conn.color; ctx.lineWidth = 1.5; ctx.setLineDash([6,4]);
+      ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(tx, ty); ctx.stroke();
+      ctx.setLineDash([]);
+      const mx=(fx+tx)/2, my=(fy+ty)/2;
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = 'rgba(15,15,35,0.85)';
+      ctx.beginPath(); ctx.arc(mx, my, 8, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle = conn.color; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(mx, my, 8, 0, Math.PI*2); ctx.stroke();
+      ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#e2e8f0';
+      ctx.fillText('💬', mx, my+3);
+      ctx.globalAlpha = alpha;
+      for (const p of conn.particles) {
+        if (p.progress <= 0 || p.progress > 1) continue;
+        const px2 = fx + (tx-fx)*p.progress;
+        const py2 = fy + (ty-fy)*p.progress;
+        const glow = ctx.createRadialGradient(px2, py2, 0, px2, py2, p.size*2.5);
+        glow.addColorStop(0, conn.color+'ff'); glow.addColorStop(1, conn.color+'00');
+        ctx.fillStyle = glow;
+        ctx.beginPath(); ctx.arc(px2, py2, p.size*2.5, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(px2, py2, p.size*0.6, 0, Math.PI*2); ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+}
+
+// =====================================================================
+// [6] SCENE INIT
+// 初始化所有对象、事件绑定、主循环
+// =====================================================================
+
+// ─── Canvas & 场景对象 ────────────────────────────────────────────────
+
+const canvas = document.getElementById('gameCanvas');
+const ctx    = canvas.getContext('2d');
+canvas.width  = CONFIG.canvasWidth;
+canvas.height = CONFIG.canvasHeight;
+
+const tileMap = new TileMap(30, 22, CONFIG.tileSize);
+const astar   = new AStar(tileMap);
+const camera  = new Camera();
+
+const mapW = tileMap.width  * CONFIG.tileSize;
+const mapH = tileMap.height * CONFIG.tileSize;
+
+const bubbleSystem = new BubbleSystem();
+const commSystem   = new CommSystem();
+
+const minimap = new Minimap(tileMap, document.getElementById('minimap-canvas'));
+
+// ─── 玩家 ─────────────────────────────────────────────────────────────
+
+const player = {
+  x: 15*32+16, y: 10*32+28,
+  targetX: 15*32+16, targetY: 10*32+28,
+  speed: 180,
+  moving: false,
+  sprite: new PlayerSprite(),
+};
+
+// ─── Agent 列表（DataAdapter 同步维护）───────────────────────────────
+
+let agents = []; // AgentEntity[]
+let selectedAgentId = null;
+let ghostMode = false;
+let globalTimer = 0;
+
+// ─── Scene 接口（DataManager 回调）──────────────────────────────────
+
+const Scene = {
+  /**
+   * 同步 DataAdapter 推送的 agent 数据
+   * 新 id → 创建 AgentEntity；已有 id → syncData；消失的 id → 移除
+   */
+  syncAgents(dataList) {
+    const dataById = new Map(dataList.map(d => [d.id, d]));
+
+    // 更新/新增
+    for (const data of dataList) {
+      const existing = agents.find(a => a.id === data.id);
+      if (existing) {
+        existing.syncData(data);
+      } else {
+        agents.push(new AgentEntity(data, tileMap, astar));
+      }
+    }
+    // 移除消失的（Live 模式 session 关闭时）
+    agents = agents.filter(a => dataById.has(a.id));
+
+    document.getElementById('agent-count').textContent = `${agents.length} Agents`;
+    updateAgentList();
+    if (selectedAgentId) updateDetailCard(selectedAgentId);
+  },
+
+  /** 收到外部消息事件（Live 模式） */
+  triggerMessage(fromId, text) {
+    const from = agents.find(a => a.id === fromId);
+    if (!from) return;
+    const others = agents.filter(a => a.id !== fromId);
+    if (others.length === 0) {
+      // 只有金毛一个小人时，显示气泡给自己
+      bubbleSystem.show(fromId, text, agents);
+      return;
+    }
+    const to = others[Math.floor(Math.random() * others.length)];
+    commSystem.trigger(fromId, to.id, text, agents, bubbleSystem);
+  },
+
+  /** 同步 session 列表到侧边栏 */
+  syncSessions(sessions) {
+    Scene._sessions = sessions;
+    const el = document.getElementById('session-list-items');
+    if (!el) return;
+    if (!sessions.length) {
+      el.innerHTML = '<p class="detail-empty" style="font-size:0.75rem;padding:8px">暂无会话</p>';
+      return;
+    }
+    el.innerHTML = sessions.map(s => `
+      <div onclick="Scene.openChatBox('${s.key.replace(/'/g,"\\'")}','${s.label.replace(/'/g,"\\'")}')"
+        style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;cursor:pointer;margin-bottom:4px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);"
+        onmouseover="this.style.background='rgba(59,130,246,0.15)'" onmouseout="this.style.background='rgba(255,255,255,0.04)'">
+        <span style="font-size:1rem;">${s.channelIcon}</span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:0.78rem;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${s.label}</div>
+          <div style="font-size:0.68rem;color:#64748b;">${s.status === 'running' ? '🟢 运行中' : '⚪ 空闲'}</div>
+        </div>
+        <span style="font-size:0.65rem;color:#3b82f6;">发消息 →</span>
+      </div>
+    `).join('');
+  },
+
+  /** 设置金毛头顶聊天状态 */
+  setAgentChatStatus(agentId, status) {
+    const entity = agents.find(a => a.id === agentId || (agentId === 'main' && (a.isMain || a.id === 'main')));
+    if (entity) entity.chatStatus = status;
+  },
+  appendReply(text) {
+    const log = document.getElementById('chat-log');
+    if (!log) return;
+    // 移除"思考中"气泡
+    const thinking = log.querySelector('.thinking');
+    if (thinking) thinking.remove();
+    Scene.__renderAssistantBubble(log, text, true);
+    Scene._saveChatHistory();
+  },
+
+  __renderAssistantBubble(log, text, scroll) {
+    const bubble = document.createElement('div');
+    bubble.dataset.role = 'assistant';
+    bubble.dataset.text = text;
+    bubble.style.cssText = 'display:flex;gap:6px;align-items:flex-start;';
+    bubble.innerHTML = `
+      <span style="font-size:1.1rem;flex-shrink:0;">🐕</span>
+      <div style="background:rgba(99,102,241,0.2);border:1px solid rgba(99,102,241,0.3);border-radius:8px 8px 8px 2px;padding:6px 10px;font-size:0.78rem;color:#e2e8f0;max-width:90%;white-space:pre-wrap;">${text.replace(/</g,'&lt;')}</div>
+    `;
+    log.appendChild(bubble);
+    if (scroll) log.scrollTop = log.scrollHeight;
+  },
+
+  _appendUserMsg(text) {
+    const log = document.getElementById('chat-log');
+    if (!log) return;
+    Scene.__renderUserBubble(log, text, true);
+    // 加"思考中"
+    const thinking = document.createElement('div');
+    thinking.className = 'thinking';
+    thinking.style.cssText = 'display:flex;gap:6px;align-items:flex-start;';
+    thinking.innerHTML = `<span style="font-size:1.1rem;">🐕</span><div style="color:#64748b;font-size:0.75rem;padding:4px 8px;">思考中…</div>`;
+    log.appendChild(thinking);
+    log.scrollTop = log.scrollHeight;
+    Scene._saveChatHistory();
+  },
+
+  __renderUserBubble(log, text, scroll) {
+    const bubble = document.createElement('div');
+    bubble.dataset.role = 'user';
+    bubble.dataset.text = text;
+    bubble.style.cssText = 'display:flex;gap:6px;align-items:flex-start;flex-direction:row-reverse;';
+    bubble.innerHTML = `
+      <span style="font-size:1.1rem;flex-shrink:0;">👤</span>
+      <div style="background:rgba(59,130,246,0.2);border:1px solid rgba(59,130,246,0.3);border-radius:8px 8px 2px 8px;padding:6px 10px;font-size:0.78rem;color:#e2e8f0;max-width:90%;white-space:pre-wrap;">${text.replace(/</g,'&lt;')}</div>
+    `;
+    log.appendChild(bubble);
+    if (scroll) log.scrollTop = log.scrollHeight;
+  },
+  _activeChatKey: 'agent:main:main',  // default to 金毛's main session
+  _STORAGE_KEY: 'openclaw-rpg-chat-history',
+
+  switchTab(tab) {
+    document.querySelectorAll('.side-tab').forEach((btn, i) => {
+      const names = ['chat', 'sessions', 'agents'];
+      btn.classList.toggle('active', names[i] === tab);
+    });
+    document.querySelectorAll('.tab-pane').forEach(pane => {
+      pane.classList.toggle('active', pane.id === `tab-${tab}`);
+    });
+    if (tab === 'agents') AgentManager.renderList();
+  },
+
+  /** 从 localStorage 恢复聊天记录 */
+  _loadChatHistory() {
+    try {
+      const saved = localStorage.getItem(Scene._STORAGE_KEY);
+      if (!saved) return;
+      const msgs = JSON.parse(saved);
+      const log = document.getElementById('chat-log');
+      if (!log) return;
+      log.innerHTML = '';
+      msgs.forEach(m => {
+        if (m.role === 'user') Scene.__renderUserBubble(log, m.text, false);
+        else Scene.__renderAssistantBubble(log, m.text, false);
+      });
+      log.scrollTop = log.scrollHeight;
+    } catch (_) {}
+  },
+
+  /** 保存聊天记录到 localStorage（只存文字，最多 100 条） */
+  _saveChatHistory() {
+    try {
+      const log = document.getElementById('chat-log');
+      if (!log) return;
+      const bubbles = log.querySelectorAll('[data-role]');
+      const msgs = Array.from(bubbles).slice(-100).map(el => ({
+        role: el.dataset.role,
+        text: el.dataset.text || '',
+      }));
+      localStorage.setItem(Scene._STORAGE_KEY, JSON.stringify(msgs));
+    } catch (_) {}
+  },
+
+  clearChat() {
+    const log = document.getElementById('chat-log');
+    if (log) log.innerHTML = '';
+    try { localStorage.removeItem(Scene._STORAGE_KEY); } catch (_) {}
+  },
+
+  openChatBox(sessionKey, label) {
+    Scene._activeChatKey = sessionKey;
+    document.getElementById('chat-session-label').textContent = label;
+    document.getElementById('chat-status').textContent = '';
+    document.getElementById('chat-input').value = '';
+    Scene.switchTab('chat');
+    document.getElementById('chat-input').focus();
+  },
+
+  closeChatBox() {
+    Scene._activeChatKey = null;
+  },
+
+  async handleChatSend() {
+    const key = Scene._activeChatKey;
+    const text = document.getElementById('chat-input').value.trim();
+    if (!key || !text) return;
+    const status = document.getElementById('chat-status');
+    const btn = document.getElementById('chat-send-btn');
+    btn.disabled = true;
+    btn.textContent = '发送中…';
+    status.textContent = '';
+    try {
+      Scene._appendUserMsg(text);
+      document.getElementById('chat-input').value = '';
+      await DataManager.sendMessage(key, text);
+      status.textContent = '';
+    } catch (e) {
+      status.textContent = `❌ ${e.message}`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '发送';
+    }
+  },
+};
+
+// ─── UI 更新 ──────────────────────────────────────────────────────────
+
+function selectAgent(id) {
+  selectedAgentId = id;
+  document.getElementById('selected-info').textContent = id || '无';
+  updateDetailCard(id);
+  updateAgentList();
+}
+
+function updateDetailCard(id) {
+  const content = document.getElementById('detail-content');
+  if (!id) { content.innerHTML = '<p class="detail-empty">点击 Agent 查看详情</p>'; return; }
+  const a = agents.find(a => a.id === id);
+  if (!a) return;
+  const color = (ROLE_COLORS[a.role] || ROLE_COLORS.default).primary;
+  const stateLabel = {
+    idle: '⚪ 空闲', walking: '🟡 前往工位',
+    working: '🟢 工作中', resting: '🔵 休息中', wandering: '🟡 游走中',
+  }[a.aiState] || '⚪ 空闲';
+  content.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+      <div style="width:12px;height:12px;border-radius:50%;background:${color};"></div>
+      <strong style="color:${color}">${a.name}</strong>
+    </div>
+    <div class="detail-row"><span>角色</span><span>${a.role.toUpperCase()}</span></div>
+    <div class="detail-row"><span>状态</span><span>${stateLabel}</span></div>
+    <div class="detail-row"><span>任务</span><span style="max-width:110px;text-align:right;font-size:0.75rem;">${a.taskText}</span></div>
+    <div class="detail-row"><span>模型</span><span style="font-size:0.72rem;">${a.model}</span></div>
+    <div class="detail-row"><span>运行时长</span><span>${a.uptime}</span></div>
+    <div class="detail-row"><span>Tokens</span><span>${a.tokens}</span></div>
+    <div class="detail-row"><span>位置</span><span>(${Math.round(a.x)}, ${Math.round(a.y)})</span></div>
+  `;
+}
+
+function updateAgentList() {
+  const list = document.getElementById('agent-list-items');
+  if (!list) return;
+  list.innerHTML = agents.map(a => {
+    const color = (ROLE_COLORS[a.role] || ROLE_COLORS.default).dot;
+    const dotColor = a.aiState === 'working' ? '#27AE60'
+                   : (a.aiState === 'walking' || a.aiState === 'wandering') ? '#F39C12'
+                   : '#475569';
+    const stateShort = { idle:'空闲', walking:'→工位', working:'工作', resting:'休息', wandering:'游走' };
+    const sel = a.id === selectedAgentId ? ' selected' : '';
+    return `
+      <div class="agent-item${sel}" onclick="selectAgent('${a.id}')">
+        <div class="agent-dot" style="background:${dotColor};"></div>
+        <span class="agent-item-name" style="color:${color}">${a.name}</span>
+        <span class="agent-item-status">${stateShort[a.aiState] || '空闲'}</span>
+      </div>`;
+  }).join('');
+}
+
+// ─── 碰撞检测 ─────────────────────────────────────────────────────────
+
+function canMoveTo(x, y) {
+  if (y < CONFIG.minY) return false;
+  const hw = (CONFIG.characterWidth - CONFIG.collisionPadding * 2) / 2;
+  for (const p of [{ x: x - hw, y }, { x: x + hw, y }]) {
+    if (!tileMap.isWalkable(Math.floor(p.x / CONFIG.tileSize), Math.floor(p.y / CONFIG.tileSize))) return false;
+  }
+  return true;
+}
+
+// ─── 键盘 ─────────────────────────────────────────────────────────────
+
+const keys = {};
+window.addEventListener('keydown', e => {
+  // 输入框聚焦时，不触发游戏快捷键
+  if (document.activeElement?.tagName === 'TEXTAREA' || document.activeElement?.tagName === 'INPUT') return;
+  keys[e.key] = true;
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
+  if (e.key === 'g' || e.key === 'G') {
+    ghostMode = !ghostMode;
+    player.moving = false;
+    const el = document.getElementById('ghost-status');
+    if (el) el.textContent = ghostMode ? '👻 幽灵' : '🚶 正常';
+  }
+});
+window.addEventListener('keyup', e => { keys[e.key] = false; });
+
+// ─── 鼠标 ─────────────────────────────────────────────────────────────
+
+function canvasScreenPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    sx: (e.clientX - rect.left) * (CONFIG.canvasWidth  / rect.width),
+    sy: (e.clientY - rect.top)  * (CONFIG.canvasHeight / rect.height),
+  };
+}
+
+canvas.addEventListener('click', e => {
+  const { sx, sy } = canvasScreenPos(e);
+  const { x: wx, y: wy } = camera.screenToWorld(sx, sy);
+  const clicked = agents.find(ag => ag.hitTest(wx, wy));
+  if (clicked) {
+    selectAgent(clicked.id);
+    // 点击 agent → 打开对应聊天 Tab
+    const agentChatKeys = { main: 'agent:main:main', husky: 'agent:husky:main' };
+    const agentChatNames = { main: '金毛 🐕', husky: '哈士奇 🐺' };
+    const chatKey = agentChatKeys[clicked.id];
+    if (chatKey) {
+      const sessionKey = Scene._sessions?.find(s => s.key === chatKey)?.key || chatKey;
+      Scene.openChatBox(sessionKey, agentChatNames[clicked.id] || clicked.name);
+    }
+    return;
+  }
+  selectAgent(null);
+  // 幽灵模式下忽略碰撞，直接移动
+  if (ghostMode || canMoveTo(wx, wy)) { player.targetX = wx; player.targetY = wy; player.moving = true; }
+});
+
+canvas.addEventListener('mousedown', e => {
+  if (e.button === 1 || e.button === 2) {
+    const { sx, sy } = canvasScreenPos(e);
+    camera.startDrag(sx, sy);
+    e.preventDefault();
+  }
+});
+canvas.addEventListener('mousemove', e => {
+  if (!camera.dragging) return;
+  const { sx, sy } = canvasScreenPos(e);
+  camera.moveDrag(sx, sy, mapW, mapH);
+});
+canvas.addEventListener('mouseup',    e => { if (e.button === 1 || e.button === 2) camera.endDrag(); });
+canvas.addEventListener('mouseleave', () => camera.endDrag());
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+// ─── 更新 ─────────────────────────────────────────────────────────────
+
+function update(dt) {
+  globalTimer += dt;
+
+  // 时钟
+  const now = new Date();
+  document.getElementById('time-info').textContent =
+    `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
+
+  // 玩家输入
+  player.sprite.update(dt);
+  let dx = 0, dy = 0;
+  if (keys['w'] || keys['ArrowUp'])    dy -= 1;
+  if (keys['s'] || keys['ArrowDown'])  dy += 1;
+  if (keys['a'] || keys['ArrowLeft'])  dx -= 1;
+  if (keys['d'] || keys['ArrowRight']) dx += 1;
+
+  if (dx !== 0 || dy !== 0) {
+    const len = Math.sqrt(dx*dx + dy*dy);
+    dx /= len; dy /= len;
+    const nx = player.x + dx * player.speed * dt;
+    const ny = player.y + dy * player.speed * dt;
+    if (ghostMode) {
+      player.x = Math.max(16, Math.min(mapW-16, nx));
+      player.y = Math.max(16, Math.min(mapH-16, ny));
+    } else {
+      if (canMoveTo(nx, player.y)) player.x = nx;
+      if (canMoveTo(player.x, ny)) player.y = ny;
+    }
+    player.moving = false;
+  } else if (player.moving && !ghostMode) {
+    const pdx = player.targetX - player.x;
+    const pdy = player.targetY - player.y;
+    const dist = Math.sqrt(pdx*pdx + pdy*pdy);
+    if (dist < 4) {
+      player.x = player.targetX; player.y = player.targetY; player.moving = false;
+    } else {
+      const mx = (pdx/dist)*player.speed*dt;
+      const my = (pdy/dist)*player.speed*dt;
+      if      (canMoveTo(player.x+mx, player.y+my)) { player.x+=mx; player.y+=my; }
+      else if (canMoveTo(player.x+mx, player.y))    { player.x+=mx; player.targetY=player.y; }
+      else if (canMoveTo(player.x, player.y+my))    { player.y+=my; player.targetX=player.x; }
+      else                                           { player.moving=false; }
+    }
+  }
+
+  for (const ag of agents) ag.update(dt);
+  commSystem.update(dt, agents, bubbleSystem);
+  bubbleSystem.update(dt);
+
+  document.getElementById('position-info').textContent = `(${Math.round(player.x)}, ${Math.round(player.y)})`;
+
+  if (Math.round(globalTimer * 2) % 2 === 0) {
+    updateAgentList();
+    if (selectedAgentId) updateDetailCard(selectedAgentId);
+  }
+}
+
+// ─── 渲染 ─────────────────────────────────────────────────────────────
+
+function render() {
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  camera.begin(ctx);
+
+  tileMap.render(ctx, camera);
+
+  // 移动目标标记
+  if (player.moving) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(52,152,219,0.25)';
+    ctx.beginPath(); ctx.arc(player.targetX, player.targetY, 10, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = 'rgba(52,152,219,0.7)'; ctx.lineWidth = 1.5; ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(player.x, player.y-8); ctx.lineTo(player.targetX, player.targetY); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  commSystem.render(ctx, agents);
+
+  // Y 轴排序渲染
+  const renderables = [
+    { y: player.y, fn: () => {
+      ctx.save();
+      if (ghostMode) ctx.globalAlpha = 0.45;
+      ctx.fillStyle = ghostMode ? 'rgba(167,139,250,0.2)' : 'rgba(96,165,250,0.15)';
+      ctx.beginPath(); ctx.ellipse(player.x, player.y, 18, 8, 0, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+      ctx.save();
+      if (ghostMode) ctx.globalAlpha = 0.5;
+      player.sprite.render(ctx, player.x, player.y);
+      ctx.restore();
+      ctx.save();
+      if (ghostMode) ctx.globalAlpha = 0.6;
+      ctx.font = 'bold 9px Monaco, monospace'; ctx.textAlign = 'center';
+      const lbl = ghostMode ? '👻 You' : '👤 You';
+      const lw = ctx.measureText(lbl).width + 8;
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(player.x - lw/2, player.y - 16*CONFIG.pixelScale - 14, lw, 13);
+      ctx.fillStyle = ghostMode ? '#a78bfa' : '#60a5fa';
+      ctx.fillText(lbl, player.x, player.y - 16*CONFIG.pixelScale - 5);
+      ctx.restore();
+    }},
+    ...agents.map(ag => ({
+      y: ag.y,
+      fn: () => {
+        ctx.save();
+        ctx.fillStyle = `${(ROLE_COLORS[ag.role]||ROLE_COLORS.default).primary}22`;
+        ctx.beginPath(); ctx.ellipse(ag.x, ag.y, 16, 7, 0, 0, Math.PI*2); ctx.fill();
+        ctx.restore();
+        ag.render(ctx, selectedAgentId);
+      }
+    })),
+  ];
+  renderables.sort((a, b) => a.y - b.y);
+  for (const r of renderables) r.fn();
+
+  bubbleSystem.render(ctx, agents);
+
+  camera.end(ctx);
+
+  // minimap removed
+}
+
+// ─── 游戏控制（全局 API）─────────────────────────────────────────────
+
+const gameLoop = new GameLoop(update, render);
+
+window.game = {
+  reset() {
+    player.x = 15*32+16; player.y = 10*32+28;
+    player.targetX = player.x; player.targetY = player.y;
+    player.moving = false;
+    camera.x = 0; camera.y = 0;
+    this.setZoomLevel(1);
+    selectAgent(null);
+  },
+  togglePause() {
+    gameLoop.paused = !gameLoop.paused;
+    document.querySelector('.btn-secondary').textContent = gameLoop.paused ? '▶ 继续' : '⏸ 暂停';
+  },
+  setZoomLevel(z) {
+    const zNum = parseFloat(z);
+    camera.setZoom(zNum, mapW, mapH);
+    document.getElementById('zoom-info').textContent = Math.round(zNum * 100) + '%';
+    const sel = document.getElementById('zoom-select');
+    if (sel) sel.value = String(zNum);
+  },
+  toggleDataSource() { DataManager.toggle(); },
+  say(fromId, toId) {
+    const to = toId || (agents.find(a => a.id !== fromId) || {}).id;
+    if (to) commSystem.trigger(fromId, to, null, agents, bubbleSystem);
+  },
+};
+
+// ─── 启动 ─────────────────────────────────────────────────────────────
+
+// Enter 发送 / Shift+Enter 换行
+document.getElementById('chat-input')?.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); Scene.handleChatSend(); }
+});
+
+// 初始化数据（Mock 模式），立即渲染第一帧
+DataManager.init(Scene);
+// MockAdapter 同步推送初始数据
+Scene.syncAgents(DataManager.getAgents());
+// 恢复历史聊天记录
+Scene._loadChatHistory();
+
+gameLoop.start();
+console.log('🎮 OpenClaw RPG Monitor 启动');
+console.log('  📡 切换 Live 模式：点击"📡 Mock 模式"按钮');
+console.log('  🔧 手动触发通信：game.say("leader-01", "fe-01")');
+console.log('  🗺  地图 20×15 (640×480)，5 Agent，A* 寻路');
+</script>
+</body>
+</html>
