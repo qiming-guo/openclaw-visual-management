@@ -3,10 +3,6 @@
 > A browser-based visual interface for multi-agent monitoring, workflow demos, and team configuration.
 
 <p align="center">
-  <img src="assets/screenshots/monitor-overview.png" alt="OpenClaw RPG Monitor Overview" width="780" />
-</p>
-
-<p align="center">
   RPG-style monitoring · Team / Workflow Builder · Mock / Live modes · Zero-build setup
 </p>
 
@@ -63,17 +59,20 @@ This makes the project useful as:
 
 ## Screenshots
 
-### Monitor Overview
-
-<p align="center">
-  <img src="assets/screenshots/monitor-overview.png" alt="OpenClaw RPG Monitor Overview" width="880" />
-</p>
-
-### Builder / Workflow Workspace
-
-<p align="center">
-  <img src="assets/screenshots/builder-overview.png" alt="OpenClaw RPG Builder Overview" width="880" />
-</p>
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img src="assets/screenshots/monitor-overview-readme.png" alt="OpenClaw RPG Monitor Overview" width="100%" />
+      <br />
+      <sub><b>Monitor Overview</b></sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="assets/screenshots/builder-overview-readme.png" alt="OpenClaw RPG Builder Overview" width="100%" />
+      <br />
+      <sub><b>Builder / Workflow Workspace</b></sub>
+    </td>
+  </tr>
+</table>
 
 ---
 

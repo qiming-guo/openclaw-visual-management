@@ -3,10 +3,6 @@
 > 一个面向多 Agent 演示、监控与工作流配置的浏览器端可视化项目。
 
 <p align="center">
-  <img src="assets/screenshots/monitor-overview.png" alt="OpenClaw RPG Monitor Overview" width="780" />
-</p>
-
-<p align="center">
   RPG 风格地图监控 · Team / Workflow Builder · Mock / Live 双模式 · 零构建依赖
 </p>
 
@@ -63,17 +59,20 @@ OpenClaw Visual Management 把 **RPG 风格地图监控**、**会话侧边栏**�
 
 ## 界面预览
 
-### 监控总览
-
-<p align="center">
-  <img src="assets/screenshots/monitor-overview.png" alt="OpenClaw RPG Monitor Overview" width="880" />
-</p>
-
-### Builder / Workflow 工作区
-
-<p align="center">
-  <img src="assets/screenshots/builder-overview.png" alt="OpenClaw RPG Builder Overview" width="880" />
-</p>
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img src="assets/screenshots/monitor-overview-readme.png" alt="OpenClaw RPG Monitor Overview" width="100%" />
+      <br />
+      <sub><b>监控总览</b></sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="assets/screenshots/builder-overview-readme.png" alt="OpenClaw RPG Builder Overview" width="100%" />
+      <br />
+      <sub><b>Builder / Workflow 工作区</b></sub>
+    </td>
+  </tr>
+</table>
 
 ---
 
