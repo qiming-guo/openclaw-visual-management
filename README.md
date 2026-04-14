@@ -1,103 +1,120 @@
 # OpenClaw Visual Management
 
-一个基于浏览器的可视化多 Agent 监控与工作流演示项目。当前项目以 RPG 风格地图为主界面，把 Agent 状态、会话、流程阶段、Builder 配置和运行反馈整合到一个轻量级前端里，便于演示、调试和后续产品化演进。
+> 一个面向多 Agent 演示、监控与工作流配置的浏览器端可视化项目。
 
-## 项目目标
+<p align="center">
+  <img src="assets/screenshots/monitor-overview.png" alt="OpenClaw RPG Monitor Overview" width="780" />
+</p>
 
-这个项目当前主要服务于两类场景：
+<p align="center">
+  RPG 风格地图监控 · Team / Workflow Builder · Mock / Live 双模式 · 零构建依赖
+</p>
 
-1. **可视化监控**
-   - 以 RPG 地图的方式展示 Agent 的位置、状态、对话气泡和协作关系。
-2. **工作流 / 团队 Builder 演示**
-   - 在 UI 中配置团队角色、流程阶段、RPG cue，并直接启动一个可见的多阶段工作流。
-
-当前实现同时支持：
-- **Mock 模式**：本地演示、无后端依赖
-- **Live 模式**：连接 OpenClaw Gateway，读取 agent / session 数据并发送消息
-
----
-
-## 核心功能
-
-### 1. RPG 风格 Agent 监控
-- 地图、工位、会议区、设备区等像素风场景
-- Agent 小人状态展示：空闲、工作、行走、游走、休息
-- 对话气泡、协作连线、运行提示
-- 摄像机缩放、拖拽、键盘移动、幽灵模式
-
-### 2. Builder / Workflow 面板
-- Team Builder：编辑角色、图标、能力标签、绑定 Agent
-- Workflow Builder：编辑阶段、owner、完成信号、RPG cue、交接语
-- Run Snapshot：查看当前阶段、owner、状态、进度
-- Run Board：查看运行状态和阶段历史
-
-### 3. 数据源切换
-- 默认启动为 Mock 模式
-- 可以切换到 OpenClaw Live 模式
-- Live 模式支持：
-  - Agent 列表同步
-  - Session 列表同步
-  - Chat 发送/接收
-  - Agent 运行状态反馈
-
-### 4. 模块化前端结构
-经过重构后，项目已经不再依赖一个超大 HTML 文件，而是拆成按职责分层的模块，便于后续继续扩展和维护。
+<p align="center">
+  <a href="./README.en.md">English README</a>
+</p>
 
 ---
 
-## 项目结构
+## 目录
 
-```text
-.
-├── openclaw-monitor-rpg.html      # 页面壳 / 启动入口
-├── README.md
-├── LICENSE
-├── .gitignore
-├── src/
-│   ├── openclaw-monitor-rpg.css   # 页面样式
-│   ├── rpg-config.js              # 运行配置、颜色、工位映射
-│   ├── agent-manager.js           # Agent 管理 UI 与 RPC 操作
-│   ├── monitor-data.js            # Mock / Live adapter 与 DataManager
-│   ├── workflow-core.js           # Workflow 领域模型与状态引擎
-│   ├── workflow-panel.js          # Builder / Workflow UI 编排
-│   ├── rpg-runtime.js             # AStar / GameLoop / Camera / Bubble / Comm / Minimap
-│   ├── rpg-entities.js            # TileMap / Sprite / AgentEntity
-│   └── rpg-scene.js               # Scene、输入事件、update/render、bootstrap orchestration
-└── tests/
-    ├── openclaw-monitor-syntax.test.mjs
-    └── workflow-core.test.mjs
-```
+- [项目概览](#项目概览)
+- [亮点](#亮点)
+- [界面预览](#界面预览)
+- [快速开始](#快速开始)
+- [Live 模式](#live-模式)
+- [使用说明](#使用说明)
+- [项目结构](#项目结构)
+- [开发说明](#开发说明)
+- [测试](#测试)
+- [已知限制](#已知限制)
+- [后续方向](#后续方向)
+- [许可证](#许可证)
 
 ---
 
-## 运行方式
+## 项目概览
 
-### 方式一：本地预览（推荐）
-由于项目使用了浏览器 ESM 模块导入，**不要直接双击 HTML 文件** 打开，建议使用本地静态服务器。
+OpenClaw Visual Management 把 **RPG 风格地图监控**、**会话侧边栏**、**团队 / 流程 Builder** 与 **阶段推进反馈** 组合到一个轻量级前端中，用于：
 
-在项目根目录运行：
+1. **多 Agent 可视化监控**
+   - 在一张 RPG 地图上展示 Agent 的位置、状态、运动、气泡消息和协作关系。
+2. **工作流 / 团队配置演示**
+   - 通过 Builder 直接编辑团队角色与流程阶段，并观察工作流在 UI 上的推进过程。
+3. **后续真实后端接入的视觉载体**
+   - 当前已支持 Mock / Live 双模式，适合作为原型验证和产品演示基础。
+
+它既可以被当作：
+- 一个可交互的前端原型
+- 一个多 Agent 监控演示页
+- 一个后续接入真实 backend 的可视化前端壳
+
+---
+
+## 亮点
+
+- **RPG 风格监控界面**：用像素地图展示 Agent 状态、位置、通信与协作关系
+- **内置 Team / Workflow Builder**：直接在 UI 中配置角色、阶段、owner、RPG cue
+- **Mock / Live 双模式**：本地演示开箱即用，也可连接 OpenClaw Gateway
+- **零构建依赖**：原生 HTML + CSS + JavaScript ESM，无需前端框架或打包器
+- **已完成模块化重构**：页面壳、数据层、流程层、运行时、实体层、Scene 层职责清晰分离
+
+---
+
+## 界面预览
+
+### 监控总览
+
+<p align="center">
+  <img src="assets/screenshots/monitor-overview.png" alt="OpenClaw RPG Monitor Overview" width="880" />
+</p>
+
+### Builder / Workflow 工作区
+
+<p align="center">
+  <img src="assets/screenshots/builder-overview.png" alt="OpenClaw RPG Builder Overview" width="880" />
+</p>
+
+---
+
+## 快速开始
+
+### 1. 本地预览
+
+由于项目使用浏览器 ESM 模块导入，**不要直接双击 HTML 文件** 打开。推荐使用一个本地静态服务器：
 
 ```bash
 python3 -m http.server 4173
 ```
 
-然后在浏览器里打开：
+然后在浏览器中访问：
 
 ```text
 http://127.0.0.1:4173/openclaw-monitor-rpg.html
 ```
 
-### 启动后的默认行为
-- 默认进入 **Mock 模式**
-- 页面会展示 5 个默认 Agent
-- 可以直接点击：
-  - `🧩 启动流程`
-  - `➡️ 下一阶段`
-  - `🧱 Builder` 标签页查看和编辑团队 / 工作流配置
+### 2. 默认体验
+
+启动后默认进入 **Mock 模式**，你可以直接：
+
+- 查看地图中的默认 Agent
+- 点击 `🧩 启动流程`
+- 点击 `➡️ 下一阶段`
+- 切到 `🧱 Builder` 标签页修改团队 / 流程配置
+
+### 3. 常用开发命令
+
+```bash
+# 本地预览
+python3 -m http.server 4173
+
+# 运行测试
+node --test tests/*.test.mjs
+```
 
 ---
 
-## Live 模式使用方法
+## Live 模式
 
 页面顶部有：
 
@@ -105,20 +122,19 @@ http://127.0.0.1:4173/openclaw-monitor-rpg.html
 
 点击后会尝试连接 OpenClaw Gateway。
 
-### 当前实现说明
-当前 Live 模式通过前端模块中的配置连接 Gateway，代码位于：
-
+### 当前 Live 模式实现位置
 - `src/monitor-data.js`
-- 以及入口文件中传入的 `liveConfig`
+- 入口中传入的 `liveConfig`
 
-当前会使用这些能力：
+### 当前会使用的能力
 - `agents.list`
 - `sessions.list`
 - `sessions.send`
 - WebSocket 事件监听（如 chat / agent 状态）
 
-### 注意
-如果本地没有可用的 OpenClaw Gateway，建议继续使用 Mock 模式进行 UI 演示与开发。
+### 注意事项
+- 如果本地没有可用的 OpenClaw Gateway，建议继续使用 Mock 模式进行开发和演示。
+- 当前项目更偏前端原型 / 可视化演示，而不是完整的生产级调度系统。
 
 ---
 
@@ -136,13 +152,16 @@ http://127.0.0.1:4173/openclaw-monitor-rpg.html
 - `🔄 重置`：重置场景和流程状态
 
 ### Chat / Session
-- 侧边栏切到 `💬 聊天` / `📋 会话`
-- 可以查看 session 列表
-- 可以向当前选中会话发送消息
+- 切到 `💬 聊天` / `📋 会话`
+- 查看 session 列表
+- 向当前选中会话发送消息
 
 ### Agent 管理
-- 侧边栏切到 `🤖 Agents`
-- 可对 Agent 进行新增、编辑、删除（Live 模式下可用）
+- 切到 `🤖 Agents`
+- 在 Live 模式下可进行：
+  - 新增 Agent
+  - 编辑 Agent
+  - 删除 Agent
 
 ### Builder
 - 切到 `🧱 Builder`
@@ -152,6 +171,34 @@ http://127.0.0.1:4173/openclaw-monitor-rpg.html
   - 流程名称
   - 阶段配置
   - RPG cue 与交接语
+
+---
+
+## 项目结构
+
+```text
+.
+├── openclaw-monitor-rpg.html      # 页面壳 / 启动入口
+├── README.md
+├── README.en.md
+├── LICENSE
+├── .gitignore
+├── assets/
+│   └── screenshots/               # README 截图资源
+├── src/
+│   ├── openclaw-monitor-rpg.css   # 页面样式
+│   ├── rpg-config.js              # 运行配置、颜色、工位映射
+│   ├── agent-manager.js           # Agent 管理 UI 与 RPC 操作
+│   ├── monitor-data.js            # Mock / Live adapter 与 DataManager
+│   ├── workflow-core.js           # Workflow 领域模型与状态引擎
+│   ├── workflow-panel.js          # Builder / Workflow UI 编排
+│   ├── rpg-runtime.js             # AStar / GameLoop / Camera / Bubble / Comm / Minimap
+│   ├── rpg-entities.js            # TileMap / Sprite / AgentEntity
+│   └── rpg-scene.js               # Scene、输入事件、update/render、bootstrap orchestration
+└── tests/
+    ├── openclaw-monitor-syntax.test.mjs
+    └── workflow-core.test.mjs
+```
 
 ---
 
@@ -170,11 +217,19 @@ http://127.0.0.1:4173/openclaw-monitor-rpg.html
 3. 用浏览器手动验证页面效果
 4. 运行测试确认没有回归
 
+### 模块边界建议
+如果继续扩展功能，建议遵守现有模块职责边界：
+- 新的数据源逻辑放入 `monitor-data.js`
+- 新的工作流 / Builder 逻辑放入 `workflow-panel.js` / `workflow-core.js`
+- 新的场景运行逻辑放入 `rpg-scene.js` / `rpg-runtime.js`
+- 尽量不要把新逻辑重新堆回 `openclaw-monitor-rpg.html`
+
 ---
 
 ## 测试
 
 ### 运行全部测试
+
 ```bash
 node --test tests/*.test.mjs
 ```
@@ -196,7 +251,7 @@ node --test tests/*.test.mjs
 2. **Builder 配置当前主要是内存态**
    - 刷新页面后不会自动持久化
 3. **Live 模式依赖可用的 OpenClaw Gateway**
-4. **部分真实后端闭环能力仍在继续建设中**
+4. **真实 backend 闭环仍在继续建设中**
 
 ---
 
