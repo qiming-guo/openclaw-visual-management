@@ -173,6 +173,29 @@ export function createWorkflowPanelController({
     const cue = workflowState.currentStageBehavior;
     const progressRatio = Math.max(0, Math.min(1, workflowState.progress?.ratio || 0));
     const historyItems = (workflowState.runHistory || []).slice(-6).reverse();
+    const providerEvidence = readDataManager()?.getExecutionEvidence?.() || null;
+    const providerRun = providerEvidence?.activeRun || null;
+    const providerEvents = providerEvidence?.recentEvents || [];
+    const providerChips = [
+      `Provider · ${providerEvidence?.provider || '—'}`,
+      `Status · ${providerEvidence?.status || '—'}`,
+      providerRun?.runId ? `Run · ${providerRun.runId}` : null,
+      providerRun?.status ? `Exec · ${providerRun.status}` : null,
+    ].filter(Boolean);
+    const providerEventHtml = providerEvents.length
+      ? providerEvents.map((event) => `
+          <div class="builder-history-item">
+            <div>${escapeHtml(event.type)}</div>
+            <div class="builder-inline-note">${escapeHtml((event.payload?.direction ? `${event.payload.direction} · ` : '') + ((event.payload?.text || event.payload?.message || '').slice(0, 64) || event.stageId || ''))}</div>
+          </div>
+        `).join('')
+      : '<div class="builder-empty">暂无 provider 事件</div>';
+    const capabilityHtml = providerEvidence?.capabilities
+      ? Object.entries(providerEvidence.capabilities)
+        .filter(([, enabled]) => Boolean(enabled))
+        .map(([key]) => `<span class="builder-row-tag">${escapeHtml(key)}</span>`)
+        .join('') || '<span class="builder-inline-note">当前 provider 未声明额外能力</span>'
+      : '<span class="builder-inline-note">当前 provider 未声明额外能力</span>';
 
     runSummaryEl.innerHTML = !run ? `
       <div class="builder-empty">尚未启动流程。点击顶部「启动流程」后，这里会显示当前阶段、Owner 和进度。</div>
@@ -229,6 +252,21 @@ export function createWorkflowPanelController({
             <div class="builder-inline-note">${escapeHtml((entry.at || '').replace('T', ' ').replace('Z', ''))}</div>
           </div>
         `).join('') || '<div class="builder-empty">暂无历史</div>'}
+      </div>
+      <div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.08);">
+        <div class="builder-card-title" style="margin-bottom:8px;">
+          <div>
+            <div>🔌 Provider Execution</div>
+            <div class="builder-card-subtitle">Phase 3 适配器闭环证据：连接状态、run id 与最近事件</div>
+          </div>
+        </div>
+        <div class="builder-row-tags" style="margin-bottom:8px;">
+          ${providerChips.map((chip) => `<span class="builder-row-tag">${escapeHtml(chip)}</span>`).join('') || '<span class="builder-inline-note">当前尚无 provider 运行记录</span>'}
+        </div>
+        <div class="builder-inline-note" style="margin-bottom:8px;">Enabled capabilities</div>
+        <div class="builder-row-tags" style="margin-bottom:8px;">${capabilityHtml}</div>
+        <div class="builder-inline-note" style="margin-bottom:6px;">Recent provider events</div>
+        <div class="builder-history">${providerEventHtml}</div>
       </div>
     `;
   }
@@ -313,6 +351,37 @@ export function createWorkflowPanelController({
     readScene()?.syncAgents(readDataManager()?.getAgents?.() || []);
     syncWorkflowStatusUI();
     applyWorkflowVisualState();
+  }
+
+  function getWorkflowState() {
+    return workflowState;
+  }
+
+  function applyTeamRoleAssignments(roleAssignments = {}, nextName = workflowState?.teamTemplate?.name) {
+    if (!workflowEngine || !workflowState?.teamTemplate) return null;
+
+    const rawAgents = readDataManager()?._rawAgents || [];
+    const nextRoles = (workflowState.teamTemplate.roles || []).map((role) => {
+      if (!(role.id in roleAssignments)) {
+        return { ...role };
+      }
+
+      const assignedAgentId = roleAssignments[role.id] || null;
+      const matchedAgent = rawAgents.find((agent) => agent.id === assignedAgentId);
+      return {
+        ...role,
+        assignedAgentId,
+        assignedAgentName: matchedAgent?.name || null,
+      };
+    });
+
+    workflowEngine.setTeamTemplate({
+      id: workflowState.teamTemplate.id,
+      name: (nextName || '').trim() || '未命名团队',
+      roles: nextRoles,
+    });
+
+    return workflowEngine.getState();
   }
 
   const BuilderUI = {
@@ -404,7 +473,7 @@ export function createWorkflowPanelController({
       const dataManager = readDataManager();
       const defaults = workflowCore.createDefaultTeamTemplate(
         workflowCore.normalizeProviderSnapshot({
-          provider: dataManager?._mode === 'live' ? 'openclaw' : 'mock',
+          provider: 'openclaw',
           agents: dataManager?._rawAgents || [],
         }).agents,
       );
@@ -470,7 +539,7 @@ export function createWorkflowPanelController({
       .then((module) => {
         const dataManager = readDataManager();
         const snapshot = module.normalizeProviderSnapshot({
-          provider: dataManager?._mode === 'live' ? 'openclaw' : 'mock',
+          provider: 'openclaw',
           agents: dataManager?._rawAgents || [],
           sessions: dataManager?._rawSessions || [],
         });
@@ -492,27 +561,30 @@ export function createWorkflowPanelController({
       });
   }
 
-  function startWorkflowRun() {
-    ensureWorkflowCore()
-      .then(() => syncWorkflowProviderSnapshot())
-      .then(() => {
-        const dataManager = readDataManager();
-        if (!workflowEngine) return;
-        const title = dataManager?._mode === 'live'
-          ? 'Live 多 Agent 工作流'
-          : 'Mock 多 Agent 工作流';
-        workflowEngine.resetRun();
-        workflowEngine.startRun(title);
-        refreshWorkflowProjection();
-      })
-      .catch((error) => console.warn('[workflow] start failed:', error));
+  async function startWorkflowRun() {
+    try {
+      await ensureWorkflowCore();
+      await syncWorkflowProviderSnapshot();
+      const dataManager = readDataManager();
+      if (!workflowEngine) return;
+      const title = 'OpenClaw 多 Agent 工作流';
+      workflowEngine.resetRun();
+      workflowEngine.startRun(title);
+      refreshWorkflowProjection();
+      await dataManager?.startWorkflowProviderRun?.(workflowEngine.getState());
+      syncWorkflowStatusUI();
+    } catch (error) {
+      console.warn('[workflow] start failed:', error);
+    }
   }
 
-  function advanceWorkflowRun() {
+  async function advanceWorkflowRun() {
     if (!workflowEngine) return;
     try {
       workflowEngine.advanceStage('manual');
       refreshWorkflowProjection();
+      await readDataManager()?.advanceWorkflowProviderRun?.(workflowEngine.getState(), 'manual');
+      syncWorkflowStatusUI();
     } catch (error) {
       console.warn('[workflow] advance failed:', error);
     }
@@ -532,6 +604,8 @@ export function createWorkflowPanelController({
     syncWorkflowStatusUI,
     refreshWorkflowProjection,
     syncWorkflowProviderSnapshot,
+    getWorkflowState,
+    applyTeamRoleAssignments,
     startWorkflowRun,
     advanceWorkflowRun,
     resetWorkflowRun,

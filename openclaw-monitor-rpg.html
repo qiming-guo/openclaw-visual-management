@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>OpenClaw RPG - Agent 监控</title>
-<link rel="stylesheet" href="./src/openclaw-monitor-rpg.css">
+<link rel="stylesheet" href="./src/openclaw-monitor-rpg.css?v=20260415-liveonly">
 
 </head>
 <body>
@@ -22,7 +22,8 @@
       <option value="1.5">150%</option>
       <option value="2">200%</option>
     </select>
-    <button class="btn btn-live" id="btn-live" onclick="game.toggleDataSource()">🔌 连接 OpenClaw</button>
+    <button class="btn btn-live" id="btn-live" onclick="game.reconnectLive()">↻ 连接 OpenClaw</button>
+    <button class="btn btn-secondary" id="btn-rpg-toggle" onclick="game.toggleRpgPanel()">🗺 隐藏地图</button>
     <button class="btn btn-secondary" id="btn-workflow-start" onclick="game.startWorkflowDemo()">🧩 启动流程</button>
     <button class="btn btn-secondary" id="btn-workflow-next" onclick="game.advanceWorkflow()" disabled>➡️ 下一阶段</button>
     <button class="btn btn-secondary" id="btn-pause" onclick="game.togglePause()">⏸ 暂停</button>
@@ -34,8 +35,8 @@
   <div id="game-container">
     <canvas id="gameCanvas"></canvas>
     <div id="conn-indicator">
-      <div id="conn-dot" class="mock"></div>
-      <span id="conn-label">本地模式</span>
+      <div id="conn-dot" class="connecting"></div>
+      <span id="conn-label">连接中…</span>
     </div>
     <canvas id="minimap-canvas" width="120" height="90"></canvas>
   </div>
@@ -61,7 +62,7 @@
           <button id="chat-send-btn" onclick="Scene.handleChatSend()"
             style="flex:1;padding:5px;background:#3b82f6;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.8rem;">发送</button>
           <button onclick="Scene.clearChat()"
-            style="padding:5px 10px;background:rgba(255,255,255,0.1);color:#94a3b8;border:none;border-radius:6px;cursor:pointer;font-size:0.8rem;">清空</button>
+            style="padding:5px 10px;background:rgba(255,255,255,0.1);color:#94a3b8;border:none;border-radius:6px;cursor:pointer;font-size:0.8rem;">清空当前</button>
         </div>
         <div id="chat-status" style="font-size:0.72rem;color:#64748b;margin-top:4px;"></div>
       </div>
@@ -183,6 +184,7 @@
     <div class="modal-field">
       <label>Workspace 路径 *</label>
       <input id="modal-workspace" placeholder="/Users/me/projects/mybot">
+      <div class="modal-field-hint" id="modal-workspace-hint">未自定义路径时，将自动创建独立 workspace：/Users/chinny/.openclaw/workspace/&lt;name&gt;</div>
     </div>
     <div class="modal-field">
       <label>Emoji（可选）</label>
@@ -197,13 +199,14 @@
 </div>
 
 <script type="module">
-import { CONFIG, ROLE_COLORS, WORKSTATIONS, AGENT_WORKSTATION } from './src/rpg-config.js';
-import { createAgentManager } from './src/agent-manager.js';
-import { createDataManager } from './src/monitor-data.js';
-import { createWorkflowPanelController } from './src/workflow-panel.js';
-import { createRuntimeClasses } from './src/rpg-runtime.js';
-import { createEntityClasses } from './src/rpg-entities.js';
-import { createMonitorSceneApp } from './src/rpg-scene.js';
+import { CONFIG, ROLE_COLORS, WORKSTATIONS, AGENT_WORKSTATION } from './src/rpg-config.js?v=20260415-liveonly';
+import { createAgentManager } from './src/agent-manager.js?v=20260415-liveonly';
+import { createDataManager } from './src/monitor-data.js?v=20260415-liveonly';
+import { createWorkflowPanelController } from './src/workflow-panel.js?v=20260415-liveonly';
+import { createRuntimeClasses } from './src/rpg-runtime.js?v=20260415-liveonly';
+import { createEntityClasses } from './src/rpg-entities.js?v=20260415-liveonly';
+import { createMonitorSceneApp } from './src/rpg-scene.js?v=20260415-liveonly';
+import { createPhase3EvidenceDriver } from './src/phase3-evidence.js?v=20260415-liveonly';
 
 const { AStar, GameLoop, Camera, Minimap, BubbleSystem, CommSystem } = createRuntimeClasses({
   CONFIG,
@@ -262,7 +265,22 @@ window.Scene = sceneApp.Scene;
 window.selectAgent = sceneApp.selectAgent;
 window.game = sceneApp.game;
 
+const phase3Evidence = createPhase3EvidenceDriver({
+  DataManager,
+  workflowPanel,
+  game: sceneApp.game,
+  Scene: sceneApp.Scene,
+});
+window.Phase3Evidence = phase3Evidence;
+
+const evidenceParams = new URLSearchParams(window.location.search);
+const phase3EvidenceEnabled = (() => {
+  const value = evidenceParams.get('phase3-evidence');
+  return Boolean(value) && !['0', 'false', 'off'].includes(String(value).toLowerCase());
+})();
+
 sceneApp.init();
+await phase3Evidence.autoRunFromUrl();
 </script>
 </body>
 </html>

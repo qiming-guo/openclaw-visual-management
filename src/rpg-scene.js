@@ -44,6 +44,16 @@ export function createMonitorSceneApp({
   let globalTimer = 0;
   const keys = {};
   let inputBound = false;
+  let rpgPanelHidden = false;
+
+  function applyRpgPanelState(hidden = false) {
+    rpgPanelHidden = hidden;
+    const layout = document.querySelector('.main-layout');
+    const toggleBtn = document.getElementById('btn-rpg-toggle');
+    if (layout) layout.classList.toggle('rpg-collapsed', hidden);
+    if (toggleBtn) toggleBtn.textContent = hidden ? '🗺 显示地图' : '🗺 隐藏地图';
+    try { localStorage.setItem('openclaw-rpg-panel-hidden', hidden ? '1' : '0'); } catch {}
+  }
 
   const Scene = {
     applyWorkflowState(state) {
@@ -106,18 +116,61 @@ export function createMonitorSceneApp({
         el.innerHTML = '<p class="detail-empty" style="font-size:0.75rem;padding:8px">暂无会话</p>';
         return;
       }
-      el.innerHTML = sessions.map((s) => `
-        <div onclick="Scene.openChatBox('${s.key.replace(/'/g, "\\'")}','${s.label.replace(/'/g, "\\'")}')"
-          style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;cursor:pointer;margin-bottom:4px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);"
-          onmouseover="this.style.background='rgba(59,130,246,0.15)'" onmouseout="this.style.background='rgba(255,255,255,0.04)'">
-          <span style="font-size:1rem;">${s.channelIcon}</span>
-          <div style="flex:1;min-width:0;">
-            <div style="font-size:0.78rem;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${s.label}</div>
-            <div style="font-size:0.68rem;color:#64748b;">${s.status === 'running' ? '🟢 运行中' : '⚪ 空闲'}</div>
+
+      const escapeAttr = (value) => String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll("'", '&#39;')
+        .replaceAll('"', '&quot;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;');
+
+      const escapeHtml = (value) => String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;');
+
+      const configuredAgentIds = new Set(agents.map((agent) => agent.id));
+      const configuredMainSessions = sessions
+        .filter((session) => session.isAgentMainSession && configuredAgentIds.has(session.agentId))
+        .sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
+
+      const hiddenCount = sessions.length - configuredMainSessions.length;
+
+      const renderCard = (session) => {
+        const title = `${session.agentLabel} · 主会话`;
+        const subtitleBits = [
+          session.agentId,
+          session.status === 'running' ? '🟢 运行中' : '⚪ 空闲',
+          session.model && session.model !== '—' ? session.model : null,
+        ].filter(Boolean);
+        const icon = session.agentAvatar || session.channelIcon;
+        return `
+          <div onclick="Scene.openChatBox('${escapeAttr(session.key)}','${escapeAttr(session.agentLabel)}')"
+            style="display:flex;align-items:center;gap:8px;padding:8px 9px;border-radius:8px;cursor:pointer;margin-bottom:4px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);"
+            onmouseover="this.style.background='rgba(59,130,246,0.15)'" onmouseout="this.style.background='rgba(255,255,255,0.04)'">
+            <span style="font-size:1rem;">${icon}</span>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:0.78rem;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(title)}</div>
+              <div style="font-size:0.68rem;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(subtitleBits.join(' · '))}</div>
+            </div>
+            <span style="font-size:0.65rem;color:#3b82f6;">发消息 →</span>
           </div>
-          <span style="font-size:0.65rem;color:#3b82f6;">发消息 →</span>
-        </div>
-      `).join('');
+        `;
+      };
+
+      const cardsHtml = configuredMainSessions.length
+        ? configuredMainSessions.map((session) => renderCard(session)).join('')
+        : '<p class="detail-empty" style="font-size:0.74rem;padding:6px 0;">当前配置的 Agent 还没有可用主会话</p>';
+
+      const hiddenNote = hiddenCount > 0
+        ? `<div style="font-size:0.68rem;color:#64748b;margin-top:8px;">已隐藏 ${hiddenCount} 条历史 / 系统 / 非当前 Agent 会话。</div>`
+        : '<div style="font-size:0.68rem;color:#64748b;margin-top:8px;">当前仅显示已配置 Agent 的主会话。</div>';
+
+      el.innerHTML = `
+        <div style="font-size:0.7rem;color:#64748b;margin-bottom:6px;">这里只显示你当前配置 Agent 的主会话，方便快速定位。</div>
+        ${cardsHtml}
+        ${hiddenNote}
+      `;
     },
 
     setAgentChatStatus(agentId, status) {
@@ -125,23 +178,106 @@ export function createMonitorSceneApp({
       if (entity) entity.chatStatus = status;
     },
 
-    appendReply(text) {
+    _escapeHtml(value) {
+      return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;');
+    },
+
+    _getChatIdentity(sessionKey, agentId = null, fallbackLabel = '') {
+      const session = Scene._sessions?.find((item) => item.key === sessionKey);
+      const resolvedAgentId = agentId || session?.agentId || sessionKey?.split(':')?.[1] || 'main';
+      const agent = agents.find((item) => item.id === resolvedAgentId) || null;
+      const roleIcons = { leader: '🐕', designer: '🎨', frontend: '🖥️', backend: '🗄️', qa: '✅', default: '🤖' };
+      const roleLabels = { leader: 'Leader', designer: 'Designer', frontend: 'Frontend', backend: 'Backend', qa: 'QA', default: 'Agent' };
+      const role = agent?.role || session?.agentRole || 'default';
+      const accent = ROLE_COLORS[role]?.primary || ROLE_COLORS.default?.primary || '#a78bfa';
+      return {
+        agentId: resolvedAgentId,
+        label: agent?.name || session?.agentLabel || fallbackLabel || resolvedAgentId,
+        avatar: agent?.emoji || session?.agentAvatar || roleIcons[role] || roleIcons.default,
+        role,
+        roleLabel: roleLabels[role] || roleLabels.default,
+        accent,
+      };
+    },
+
+    _renderIdentityBadge(identity) {
+      return `
+        <span style="display:inline-flex;align-items:center;gap:5px;align-self:flex-start;padding:2px 8px;border-radius:999px;background:${identity.accent}22;border:1px solid ${identity.accent}55;color:${identity.accent};font-size:0.66rem;font-weight:600;line-height:1.3;">
+          <span>${identity.avatar}</span>
+          <span>${Scene._escapeHtml(identity.label)}</span>
+          <span style="opacity:0.78;">· ${Scene._escapeHtml(identity.roleLabel)}</span>
+        </span>
+      `;
+    },
+
+    _readChatStore() {
+      try {
+        return JSON.parse(localStorage.getItem(Scene._STORAGE_KEY) || '{}');
+      } catch {
+        return {};
+      }
+    },
+
+    _writeChatStore(store) {
+      try {
+        localStorage.setItem(Scene._STORAGE_KEY, JSON.stringify(store));
+      } catch {}
+    },
+
+    _appendHistoryMessage(sessionKey, message) {
+      if (!sessionKey) return;
+      const store = Scene._readChatStore();
+      const history = Array.isArray(store[sessionKey]) ? store[sessionKey] : [];
+      history.push(message);
+      store[sessionKey] = history.slice(-100);
+      Scene._writeChatStore(store);
+    },
+
+    _renderChatHistory(sessionKey = Scene._activeChatKey) {
+      const log = document.getElementById('chat-log');
+      if (!log) return;
+      log.innerHTML = '';
+      const store = Scene._readChatStore();
+      const messages = Array.isArray(store[sessionKey]) ? store[sessionKey] : [];
+      messages.forEach((message) => {
+        if (message.role === 'user') Scene.__renderUserBubble(log, message, false);
+        else Scene.__renderAssistantBubble(log, message, false);
+      });
+      log.scrollTop = log.scrollHeight;
+    },
+
+    appendReply(text, agentId = 'main', sessionKey = Scene._activeChatKey) {
+      const identity = Scene._getChatIdentity(sessionKey, agentId);
+      const message = {
+        role: 'assistant',
+        text,
+        agentId: identity.agentId,
+        label: identity.label,
+      };
+      Scene._appendHistoryMessage(sessionKey, message);
+      if (sessionKey !== Scene._activeChatKey) return;
       const log = document.getElementById('chat-log');
       if (!log) return;
       const thinking = log.querySelector('.thinking');
       if (thinking) thinking.remove();
-      Scene.__renderAssistantBubble(log, text, true);
-      Scene._saveChatHistory();
+      Scene.__renderAssistantBubble(log, message, true);
     },
 
-    __renderAssistantBubble(log, text, scroll) {
+    __renderAssistantBubble(log, message, scroll) {
+      const identity = Scene._getChatIdentity(Scene._activeChatKey, message.agentId, message.label);
       const bubble = document.createElement('div');
       bubble.dataset.role = 'assistant';
-      bubble.dataset.text = text;
+      bubble.dataset.text = message.text;
+      bubble.dataset.agentId = identity.agentId;
       bubble.style.cssText = 'display:flex;gap:6px;align-items:flex-start;';
       bubble.innerHTML = `
-        <span style="font-size:1.1rem;flex-shrink:0;">🐕</span>
-        <div style="background:rgba(99,102,241,0.2);border:1px solid rgba(99,102,241,0.3);border-radius:8px 8px 8px 2px;padding:6px 10px;font-size:0.78rem;color:#e2e8f0;max-width:90%;white-space:pre-wrap;">${text.replace(/</g, '&lt;')}</div>
+        <div style="display:flex;flex-direction:column;gap:4px;max-width:90%;">
+          ${Scene._renderIdentityBadge(identity)}
+          <div style="background:rgba(99,102,241,0.2);border:1px solid rgba(99,102,241,0.3);border-radius:8px 8px 8px 2px;padding:6px 10px;font-size:0.78rem;color:#e2e8f0;white-space:pre-wrap;">${Scene._escapeHtml(message.text)}</div>
+        </div>
       `;
       log.appendChild(bubble);
       if (scroll) log.scrollTop = log.scrollHeight;
@@ -150,31 +286,39 @@ export function createMonitorSceneApp({
     _appendUserMsg(text) {
       const log = document.getElementById('chat-log');
       if (!log) return;
-      Scene.__renderUserBubble(log, text, true);
+      const sessionKey = Scene._activeChatKey;
+      const message = { role: 'user', text };
+      Scene._appendHistoryMessage(sessionKey, message);
+      Scene.__renderUserBubble(log, message, true);
+      const assistantIdentity = Scene._getChatIdentity(sessionKey);
       const thinking = document.createElement('div');
       thinking.className = 'thinking';
       thinking.style.cssText = 'display:flex;gap:6px;align-items:flex-start;';
-      thinking.innerHTML = '<span style="font-size:1.1rem;">🐕</span><div style="color:#64748b;font-size:0.75rem;padding:4px 8px;">思考中…</div>';
+      thinking.innerHTML = `
+        <div style="display:flex;flex-direction:column;gap:4px;max-width:90%;">
+          ${Scene._renderIdentityBadge(assistantIdentity)}
+          <div style="color:#64748b;font-size:0.75rem;padding:4px 8px;">正在思考中…</div>
+        </div>
+      `;
       log.appendChild(thinking);
       log.scrollTop = log.scrollHeight;
-      Scene._saveChatHistory();
     },
 
-    __renderUserBubble(log, text, scroll) {
+    __renderUserBubble(log, message, scroll) {
       const bubble = document.createElement('div');
       bubble.dataset.role = 'user';
-      bubble.dataset.text = text;
+      bubble.dataset.text = message.text;
       bubble.style.cssText = 'display:flex;gap:6px;align-items:flex-start;flex-direction:row-reverse;';
       bubble.innerHTML = `
         <span style="font-size:1.1rem;flex-shrink:0;">👤</span>
-        <div style="background:rgba(59,130,246,0.2);border:1px solid rgba(59,130,246,0.3);border-radius:8px 8px 2px 8px;padding:6px 10px;font-size:0.78rem;color:#e2e8f0;max-width:90%;white-space:pre-wrap;">${text.replace(/</g, '&lt;')}</div>
+        <div style="background:rgba(59,130,246,0.2);border:1px solid rgba(59,130,246,0.3);border-radius:8px 8px 2px 8px;padding:6px 10px;font-size:0.78rem;color:#e2e8f0;max-width:90%;white-space:pre-wrap;">${Scene._escapeHtml(message.text)}</div>
       `;
       log.appendChild(bubble);
       if (scroll) log.scrollTop = log.scrollHeight;
     },
 
     _activeChatKey: 'agent:main:main',
-    _STORAGE_KEY: 'openclaw-rpg-chat-history',
+    _STORAGE_KEY: 'openclaw-rpg-chat-history-v2',
 
     switchTab(tab) {
       document.querySelectorAll('.side-tab').forEach((btn, i) => {
@@ -189,46 +333,31 @@ export function createMonitorSceneApp({
     },
 
     _loadChatHistory() {
-      try {
-        const saved = localStorage.getItem(Scene._STORAGE_KEY);
-        if (!saved) return;
-        const msgs = JSON.parse(saved);
-        const log = document.getElementById('chat-log');
-        if (!log) return;
-        log.innerHTML = '';
-        msgs.forEach((m) => {
-          if (m.role === 'user') Scene.__renderUserBubble(log, m.text, false);
-          else Scene.__renderAssistantBubble(log, m.text, false);
-        });
-        log.scrollTop = log.scrollHeight;
-      } catch {}
+      Scene._renderChatHistory(Scene._activeChatKey);
     },
 
     _saveChatHistory() {
-      try {
-        const log = document.getElementById('chat-log');
-        if (!log) return;
-        const bubbles = log.querySelectorAll('[data-role]');
-        const msgs = Array.from(bubbles).slice(-100).map((el) => ({
-          role: el.dataset.role,
-          text: el.dataset.text || '',
-        }));
-        localStorage.setItem(Scene._STORAGE_KEY, JSON.stringify(msgs));
-      } catch {}
+      Scene._renderChatHistory(Scene._activeChatKey);
     },
 
     clearChat() {
+      const store = Scene._readChatStore();
+      delete store[Scene._activeChatKey];
+      Scene._writeChatStore(store);
       const log = document.getElementById('chat-log');
       if (log) log.innerHTML = '';
-      try { localStorage.removeItem(Scene._STORAGE_KEY); } catch {}
+      const status = document.getElementById('chat-status');
+      if (status) status.textContent = '已清空当前会话历史';
     },
 
     openChatBox(sessionKey, label) {
       Scene._activeChatKey = sessionKey;
-      document.getElementById('chat-session-label').textContent = label;
+      const identity = Scene._getChatIdentity(sessionKey, null, label);
+      document.getElementById('chat-session-label').textContent = `${identity.label} · ${sessionKey}`;
       document.getElementById('chat-status').textContent = '';
       document.getElementById('chat-input').value = '';
       Scene.switchTab('chat');
+      Scene._renderChatHistory(sessionKey);
       document.getElementById('chat-input').focus();
     },
 
@@ -276,17 +405,21 @@ export function createMonitorSceneApp({
       idle: '⚪ 空闲', walking: '🟡 前往工位',
       working: '🟢 工作中', resting: '🔵 休息中', wandering: '🟡 游走中',
     }[a.aiState] || '⚪ 空闲';
+    const workspace = a._raw?.workspace || '—';
+    const emoji = a._raw?.identity?.emoji || '—';
     content.innerHTML = `
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
         <div style="width:12px;height:12px;border-radius:50%;background:${color};"></div>
         <strong style="color:${color}">${a.name}</strong>
       </div>
       <div class="detail-row"><span>角色</span><span>${a.role.toUpperCase()}</span></div>
+      <div class="detail-row"><span>图标</span><span>${emoji}</span></div>
       <div class="detail-row"><span>状态</span><span>${stateLabel}</span></div>
       <div class="detail-row"><span>任务</span><span style="max-width:110px;text-align:right;font-size:0.75rem;">${a.taskText}</span></div>
       <div class="detail-row"><span>模型</span><span style="font-size:0.72rem;">${a.model}</span></div>
       <div class="detail-row"><span>运行时长</span><span>${a.uptime}</span></div>
       <div class="detail-row"><span>Tokens</span><span>${a.tokens}</span></div>
+      <div class="detail-row"><span>Workspace</span><span style="max-width:150px;text-align:right;font-size:0.72rem;overflow-wrap:anywhere;">${workspace.replace(/</g, '&lt;')}</span></div>
       <div class="detail-row"><span>位置</span><span>(${Math.round(a.x)}, ${Math.round(a.y)})</span></div>
     `;
   }
@@ -350,12 +483,9 @@ export function createMonitorSceneApp({
       const clicked = agents.find((ag) => ag.hitTest(wx, wy));
       if (clicked) {
         selectAgent(clicked.id);
-        const agentChatKeys = { main: 'agent:main:main', husky: 'agent:husky:main' };
-        const agentChatNames = { main: '金毛 🐕', husky: '哈士奇 🐺' };
-        const chatKey = agentChatKeys[clicked.id];
-        if (chatKey) {
-          const sessionKey = Scene._sessions?.find((s) => s.key === chatKey)?.key || chatKey;
-          Scene.openChatBox(sessionKey, agentChatNames[clicked.id] || clicked.name);
+        const mainSession = Scene._sessions?.find((session) => session.agentId === clicked.id && session.isAgentMainSession);
+        if (mainSession) {
+          Scene.openChatBox(mainSession.key, mainSession.agentLabel || clicked.name);
         }
         return;
       }
@@ -525,9 +655,12 @@ export function createMonitorSceneApp({
       const sel = document.getElementById('zoom-select');
       if (sel) sel.value = String(zNum);
     },
-    toggleDataSource() { DataManager.toggle(); },
-    startWorkflowDemo() { workflowPanel.startWorkflowRun(); },
-    advanceWorkflow() { workflowPanel.advanceWorkflowRun(); },
+    reconnectLive() { return DataManager.reconnect(); },
+    toggleDataSource() { return DataManager.reconnect(); },
+    toggleRpgPanel() { applyRpgPanelState(!rpgPanelHidden); },
+    startWorkflowDemo() { return workflowPanel.startWorkflowRun(); },
+    advanceWorkflow() { return workflowPanel.advanceWorkflowRun(); },
+    showBuilder() { Scene.switchTab('builder'); },
     say(fromId, toId) {
       const to = toId || (agents.find((a) => a.id !== fromId) || {}).id;
       if (to) commSystem.trigger(fromId, to, null, agents, bubbleSystem);
@@ -536,6 +669,11 @@ export function createMonitorSceneApp({
 
   function init() {
     bindInputHandlers();
+    try {
+      applyRpgPanelState(localStorage.getItem('openclaw-rpg-panel-hidden') === '1');
+    } catch {
+      applyRpgPanelState(false);
+    }
     DataManager.init(Scene);
     Scene.syncAgents(DataManager.getAgents());
     Scene._loadChatHistory();
@@ -543,7 +681,7 @@ export function createMonitorSceneApp({
     workflowPanel.syncWorkflowStatusUI();
     gameLoop.start();
     console.log('🎮 OpenClaw RPG Monitor 启动');
-    console.log('  📡 切换 Live 模式：点击"📡 Mock 模式"按钮');
+    console.log('  ↻ 重新连接 OpenClaw：点击重连按钮');
     console.log('  🔧 手动触发通信：game.say("leader-01", "fe-01")');
     console.log('  🗺  地图 20×15 (640×480)，5 Agent，A* 寻路');
   }

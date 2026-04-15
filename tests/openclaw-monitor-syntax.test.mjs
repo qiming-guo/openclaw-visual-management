@@ -10,6 +10,7 @@ import { createWorkflowPanelController } from '../src/workflow-panel.js';
 import { createRuntimeClasses } from '../src/rpg-runtime.js';
 import { createEntityClasses } from '../src/rpg-entities.js';
 import { createMonitorSceneApp } from '../src/rpg-scene.js';
+import { createPhase3EvidenceDriver } from '../src/phase3-evidence.js';
 import { CONFIG, ROLE_COLORS, WORKSTATIONS, AGENT_WORKSTATION } from '../src/rpg-config.js';
 import { createAgentManager } from '../src/agent-manager.js';
 
@@ -32,8 +33,9 @@ test('openclaw monitor inline script stays syntactically valid', async () => {
   assert.doesNotThrow(() => new vm.Script(match[1]));
 });
 
-test('phase 2 builder controls are present in the monitor shell', () => {
+test('builder and layout controls are present in the monitor shell', () => {
   assert.match(html, /tab-builder/);
+  assert.match(html, /btn-rpg-toggle/);
   assert.match(html, /builder-role-list/);
   assert.match(html, /builder-stage-list/);
   assert.match(html, /workflow-run-board/);
@@ -49,6 +51,7 @@ test('monitor shell references extracted stylesheet and data module', () => {
   assert.match(html, /src\/rpg-runtime\.js/);
   assert.match(html, /src\/rpg-entities\.js/);
   assert.match(html, /src\/rpg-scene\.js/);
+  assert.match(html, /src\/phase3-evidence\.js/);
 });
 
 test('extracted monitor modules expose their factory APIs', () => {
@@ -62,4 +65,5 @@ test('extracted monitor modules expose their factory APIs', () => {
   assert.equal(typeof createRuntimeClasses, 'function');
   assert.equal(typeof createEntityClasses, 'function');
   assert.equal(typeof createMonitorSceneApp, 'function');
+  assert.equal(typeof createPhase3EvidenceDriver, 'function');
 });
